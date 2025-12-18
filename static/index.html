@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Debate (ai-lib)</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; background: #0f172a; color: #e2e8f0; display: flex; flex-direction: column; min-height: 100vh; }
+    header { padding: 16px 20px; background: #111827; border-bottom: 1px solid #1f2937; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    header h1 { margin: 0; font-size: 20px; }
+    #providers { font-size: 13px; color: #94a3b8; }
+    main { flex: 1; display: grid; grid-template-columns: 320px 1fr; gap: 12px; padding: 12px; }
+    @media (max-width: 960px) { main { grid-template-columns: 1fr; } }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 14px 16px; }
+    label { display: block; font-size: 13px; color: #cbd5e1; margin-bottom: 6px; }
+    textarea { width: 100%; background: #0b1223; border: 1px solid #1f2937; border-radius: 10px; color: #e2e8f0; padding: 12px; min-height: 96px; resize: vertical; }
+    button { background: linear-gradient(135deg, #6366f1, #22d3ee); color: white; border: none; border-radius: 10px; padding: 10px 14px; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    #history { display: flex; flex-direction: column; gap: 12px; max-height: 74vh; overflow-y: auto; }
+    .msg { border-radius: 12px; padding: 12px; border: 1px solid #1f2937; background: #0b1223; position: relative; }
+    .msg .meta { font-size: 12px; color: #cbd5e1; margin-bottom: 6px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .msg .content { line-height: 1.55; color: #e2e8f0; }
+    .msg.pro { border-left: 3px solid #22c55e; }
+    .msg.con { border-left: 3px solid #f97316; }
+    .msg.judge { border-left: 3px solid #a855f7; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .badge.pro { background: rgba(34,197,94,0.12); color: #4ade80; }
+    .badge.con { background: rgba(249,115,22,0.12); color: #fb923c; }
+    .badge.judge { background: rgba(168,85,247,0.12); color: #c084fc; }
+    .badge.phase { background: rgba(148,163,184,0.16); color: #e2e8f0; margin-left: 6px; }
+    .system { font-size: 12px; color: #94a3b8; }
+    .pill-btn { background: #0b1223; border: 1px solid #1f2937; color: #e2e8f0; border-radius: 999px; padding: 8px 12px; cursor: pointer; }
+    .pill-btn:hover { border-color: #334155; }
+    .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .status { font-size: 12px; color: #cbd5e1; margin-top: 8px; }
+    .markdown-content h2 { margin: 8px 0; font-size: 15px; }
+    .markdown-content p { margin: 6px 0; }
+    .markdown-content ul { margin: 6px 0 6px 18px; }
+    .markdown-content code { background: #1f2937; padding: 2px 4px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🤖 AI Debate · 4 轮 + 裁判</h1>
+    <div class="controls">
+      <button id="new-session">🔄 新对局</button>
+      <button id="start-btn">▶️ 开始辩论</button>
+      <button class="pill-btn" id="load-history">📚 加载历史</button>
+    </div>
+    <div id="providers">加载中...</div>
+  </header>
+
+  <main>
+    <section class="card">
+      <label for="topic">议题（自然语言描述）</label>
+      <textarea id="topic" placeholder="例：人工智能是否应当用于司法判决辅助？"></textarea>
+      <div class="status" id="status">等待输入...</div>
+    </section>
+
+    <section class="card">
+      <div class="system">会话 ID：<span id="session-span"></span></div>
+      <div id="history"></div>
+    </section>
+  </main>
+
+  <script src="/js/marked.min.js"></script>
+  <script>
+    // --- util ---
+    function uuid() { return Math.random().toString(36).slice(2,10); }
+    function ensureIds(){
+      let uid = localStorage.getItem('aidebate_uid');
+      if(!uid){ uid = 'user-' + uuid(); localStorage.setItem('aidebate_uid', uid); }
+      let sid = localStorage.getItem('aidebate_sid');
+      if(!sid){ sid = 'session-' + Date.now() + '-' + uuid(); localStorage.setItem('aidebate_sid', sid); }
+      return {uid,sid};
+    }
+    function newSession(){
+      const sid = 'session-' + Date.now() + '-' + uuid();
+      localStorage.setItem('aidebate_sid', sid);
+      renderSession();
+      historyItems = [];
+      renderHistory();
+    }
+    function renderSession(){
+      document.getElementById('session-span').textContent = localStorage.getItem('aidebate_sid');
+    }
+    function renderMarkdown(src){
+      if (window.marked && typeof marked.parse === 'function') {
+        return marked.parse(src.replace(/\r\n/g,'\n').replace(/\r/g,'\n'), {
+          gfm: true,
+          breaks: true,
+          smartLists: true,
+          headerIds: false,
+          mangle: false
+        });
+      }
+      return src.replace(/\n/g, '<br>');
+    }
+    function badge(side, phase){
+      const s = side==='pro'?'pro':side==='con'?'con':'judge';
+      return '<span class="badge '+s+'">'+side.toUpperCase()+'</span><span class="badge phase">'+phase+'</span>';
+    }
+    function addMessage(side, phase, provider, content){
+      historyItems.push({side, phase, provider, content});
+      renderHistory();
+    }
+    function updateLast(side, phase, content){
+      for(let i=historyItems.length-1;i>=0;i--){
+        if(historyItems[i].side===side && historyItems[i].phase===phase){
+          historyItems[i].content = content;
+          renderHistory();
+          return;
+        }
+      }
+      addMessage(side, phase, null, content);
+    }
+
+    // --- state ---
+    let {uid, sid} = ensureIds();
+    let streaming = false;
+    let controller = null;
+    let historyItems = [];
+
+    renderSession();
+
+    async function fetchProviders(){
+      try{
+        const res = await fetch('/health');
+        const data = await res.json();
+        document.getElementById('providers').textContent = `正方: ${data.pro} · 反方: ${data.con} · 裁判: ${data.judge}`;
+      }catch{ document.getElementById('providers').textContent = '无法获取 Provider 信息'; }
+    }
+    fetchProviders();
+
+    function renderHistory(){
+      const box = document.getElementById('history');
+      box.innerHTML = '';
+      historyItems.forEach(msg=>{
+        const div = document.createElement('div');
+        div.className = 'msg ' + msg.side;
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.innerHTML = `<span>${badge(msg.side, msg.phase||'')}</span><span>${msg.provider||''}</span>`;
+        const content = document.createElement('div');
+        content.className = 'content markdown-content';
+        content.innerHTML = renderMarkdown(msg.content||'');
+        div.appendChild(meta); div.appendChild(content);
+        box.appendChild(div);
+      });
+      box.scrollTop = box.scrollHeight;
+    }
+
+    async function loadHistory(){
+      const params = new URLSearchParams({ user_id: uid, session_id: sid });
+      const res = await fetch('/history?'+params.toString());
+      const data = await res.json();
+      historyItems = (data.history||[]).map(h=>({side:h.role, phase:h.phase, provider:h.provider, content:h.content}));
+      renderHistory();
+    }
+
+    async function startDebate(){
+      if(streaming) {
+        controller?.abort();
+        setStatus('已中断');
+        streaming = false;
+        controller = null;
+        return;
+      }
+
+      const topic = document.getElementById('topic').value.trim();
+      if(!topic){ setStatus('请先输入议题'); return; }
+
+      setStatus('辩论进行中…');
+      streaming = true;
+      controller = new AbortController();
+      historyItems = [];
+      renderHistory();
+
+      try {
+        const body = { user_id: uid, session_id: sid, topic };
+        const resp = await fetch('/debate/stream', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(body),
+          signal: controller.signal
+        });
+
+        if(!resp.ok){
+          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        }
+
+        if(!resp.body){
+          throw new Error('响应体为空');
+        }
+
+        const reader = resp.body.getReader(); const decoder = new TextDecoder();
+        let buf='';
+
+        while(true){
+          const {done,value} = await reader.read();
+          if(done) break;
+          buf += decoder.decode(value,{stream:true});
+          const parts = buf.split('\n\n'); buf = parts.pop();
+          for(const p of parts){
+            if(!p.trim()) continue;
+            const lines = p.split('\n').filter(l=>l.startsWith('data:'));
+            if(lines.length===0) continue;
+            const jsonStr = lines.map(l=> l.startsWith('data: ')? l.slice(6): l.slice(5)).join('\n');
+            let evt=null; try{ evt=JSON.parse(jsonStr); }catch(e){ console.warn('Parse error:',e,jsonStr); continue; }
+            handleEvent(evt);
+          }
+        }
+      } catch(e) {
+        if(e.name === 'AbortError'){
+          setStatus('已中断');
+        } else {
+          setStatus('错误: ' + e.message);
+          console.error('Debate error:', e);
+        }
+      } finally {
+        streaming = false;
+        controller = null;
+      }
+    }
+
+    function handleEvent(evt){
+      if(!evt || typeof evt!=='object') return;
+      if(evt.type==='delta'){
+        updateLast(evt.side, evt.phase, (getExistingContent(evt.side, evt.phase) || '') + evt.content);
+      } else if(evt.type==='phase_start'){
+        addMessage(evt.side, evt.phase, evt.provider, '(生成中...)');
+        setStatus(`正在生成：${evt.title} (${evt.provider})`);
+        updateStartButton('⏹️ 停止辩论');
+      } else if(evt.type==='phase_done'){
+        setStatus(`✓ 完成：${evt.phase} / ${evt.side}`);
+      } else if(evt.type==='error'){
+        setStatus('❌ 错误：'+evt.message);
+        updateStartButton('▶️ 开始辩论');
+      } else if(evt.type==='done'){
+        setStatus('🎉 辩论完成');
+        updateStartButton('▶️ 开始辩论');
+      } else if(evt.type==='phase' && evt.phase==='init'){
+        setStatus('🚀 辩论开始');
+      }
+    }
+
+    function updateStartButton(text){
+      document.getElementById('start-btn').textContent = text;
+    }
+
+    function getExistingContent(side, phase){
+      for(let i=historyItems.length-1;i>=0;i--){
+        const m=historyItems[i];
+        if(m.side===side && m.phase===phase) return m.content||'';
+      }
+      return '';
+    }
+
+    function setStatus(msg){ document.getElementById('status').textContent = msg; }
+
+    document.getElementById('start-btn').addEventListener('click', startDebate);
+    document.getElementById('load-history').addEventListener('click', loadHistory);
+    document.getElementById('new-session').addEventListener('click', newSession);
+  </script>
+</body>
+</html>
+
