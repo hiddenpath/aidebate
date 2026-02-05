@@ -1,7 +1,19 @@
-use ai_lib::metrics::{Metrics, Timer};
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Instant;
+
+/// Simple timer trait for measuring operation durations
+pub trait Timer: Send {
+    fn stop(self: Box<Self>);
+}
+
+/// Metrics trait for recording application metrics
+#[async_trait]
+pub trait Metrics: Send + Sync {
+    #[allow(dead_code)]
+    async fn incr_counter(&self, name: &str, value: u64);
+    async fn start_timer(&self, name: &str) -> Option<Box<dyn Timer + Send>>;
+}
 
 pub struct SimpleMetrics;
 
@@ -30,39 +42,10 @@ impl Metrics for SimpleMetrics {
         println!("[metrics] counter {} += {}", name, value);
     }
 
-    async fn record_gauge(&self, name: &str, value: f64) {
-        println!("[metrics] gauge {} = {:.3}", name, value);
-    }
-
     async fn start_timer(&self, name: &str) -> Option<Box<dyn Timer + Send>> {
         Some(Box::new(SimpleTimer {
             name: name.to_string(),
             start: Instant::now(),
         }))
     }
-
-    async fn record_histogram(&self, name: &str, value: f64) {
-        println!("[metrics] hist {} = {:.3}", name, value);
-    }
-
-    async fn record_histogram_with_tags(&self, name: &str, value: f64, tags: &[(&str, &str)]) {
-        println!("[metrics] hist {} = {:.3} tags={:?}", name, value, tags);
-    }
-
-    async fn incr_counter_with_tags(&self, name: &str, value: u64, tags: &[(&str, &str)]) {
-        println!("[metrics] counter {} += {} tags={:?}", name, value, tags);
-    }
-
-    async fn record_gauge_with_tags(&self, name: &str, value: f64, tags: &[(&str, &str)]) {
-        println!("[metrics] gauge {} = {:.3} tags={:?}", name, value, tags);
-    }
-
-    async fn record_error(&self, name: &str, error_type: &str) {
-        println!("[metrics] error {} type={}", name, error_type);
-    }
-
-    async fn record_success(&self, name: &str, success: bool) {
-        println!("[metrics] success {} = {}", name, success);
-    }
 }
-

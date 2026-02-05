@@ -1,99 +1,153 @@
 use std::sync::Arc;
-use std::time::Duration;
 
-use ai_lib::{AiClient, AiClientBuilder, Provider};
+use ai_lib_rust::AiClientBuilder;
 use tracing::info;
 
 use crate::types::ClientInfo;
 
 pub fn init_tracing() {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
     let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
         .with_target(false)
         .with_level(true)
         .try_init();
 }
 
-pub fn init_clients() -> anyhow::Result<(ClientInfo, ClientInfo, ClientInfo)> {
-    // 1. Available candidates map
-    let mut candidates: std::collections::HashMap<String, Provider> =
-        std::collections::HashMap::new();
-    let supported = [
-        ("groq", Provider::Groq, "GROQ_API_KEY"),
-        ("mistral", Provider::Mistral, "MISTRAL_API_KEY"),
-        ("deepseek", Provider::DeepSeek, "DEEPSEEK_API_KEY"),
-        ("gemini", Provider::Gemini, "GOOGLE_API_KEY"),
-        ("openai", Provider::OpenAI, "OPENAI_API_KEY"),
-        ("qwen", Provider::Qwen, "DASHSCOPE_API_KEY"),
-        ("zhipu", Provider::ZhipuAI, "ZHIPU_API_KEY"),
-        ("anthropic", Provider::Anthropic, "ANTHROPIC_API_KEY"),
-    ];
+/// Fixed role assignments: 正方=DeepSeek, 反方=智谱 GLM, 裁判=Groq
+/// Env override: PRO_MODEL_ID, CON_MODEL_ID, JUDGE_MODEL_ID (e.g. deepseek/deepseek-chat)
+const PRO_DEFAULT_MODEL_ID: &str = "deepseek/deepseek-chat";
+const CON_DEFAULT_MODEL_ID: &str = "zhipu/glm-4-plus";
+const JUDGE_DEFAULT_MODEL_ID: &str = "groq/llama-3.3-70b-versatile";
 
-    for (key, provider, env_var) in supported {
-        if std::env::var(env_var).is_ok() {
-            candidates.insert(key.to_string(), provider);
+/// Fallback models using Mistral (provider id: mistral, env: MISTRAL_API_KEY)
+/// One fallback per role when primary fails. Mistral verified working in connectivity tests.
+const PRO_FALLBACK_MODEL_ID: &str = "mistral/mistral-small-latest";
+const CON_FALLBACK_MODEL_ID: &str = "mistral/mistral-small-latest";
+const JUDGE_FALLBACK_MODEL_ID: &str = "mistral/mistral-small-latest";
+
+fn role_env_key(role: &str) -> &'static str {
+    match role {
+        "pro" => "PRO_MODEL_ID",
+        "con" => "CON_MODEL_ID",
+        "judge" => "JUDGE_MODEL_ID",
+        _ => "MODEL_ID",
+    }
+}
+
+fn model_id_for_role(role: &str, default: &str) -> String {
+    std::env::var(role_env_key(role)).unwrap_or_else(|_| default.to_string())
+}
+
+/// Local ai-protocol directories to check (in order of preference, cross-platform).
+const LOCAL_AI_PROTOCOL_PATHS: &[&str] = &[
+    "ai-protocol",
+    "../ai-protocol",
+    "../../ai-protocol",
+];
+
+/// Fallback: GitHub raw URL (used only if no local directory found).
+const AI_PROTOCOL_GITHUB_RAW: &str =
+    "https://raw.githubusercontent.com/hiddenpath/ai-protocol/main";
+
+pub async fn init_clients() -> anyhow::Result<(ClientInfo, ClientInfo, ClientInfo)> {
+    // Prefer local ai-protocol directory for reliability (avoid network timeouts).
+    // Only fall back to GitHub if no local directory exists.
+    if std::env::var("AI_PROTOCOL_DIR").is_err() && std::env::var("AI_PROTOCOL_PATH").is_err() {
+        let mut found_local = false;
+        for path in LOCAL_AI_PROTOCOL_PATHS {
+            if std::path::Path::new(path).join("v1/providers").exists() {
+                std::env::set_var("AI_PROTOCOL_DIR", *path);
+                info!("📁 Using local AI-Protocol: {}", path);
+                found_local = true;
+                break;
+            }
+        }
+        if !found_local {
+            info!("🌐 Using remote AI-Protocol from GitHub (may be slow)");
+            std::env::set_var("AI_PROTOCOL_DIR", AI_PROTOCOL_GITHUB_RAW);
         }
     }
+    let pro_model = model_id_for_role("pro", PRO_DEFAULT_MODEL_ID);
+    let con_model = model_id_for_role("con", CON_DEFAULT_MODEL_ID);
+    let judge_model = model_id_for_role("judge", JUDGE_DEFAULT_MODEL_ID);
 
-    if candidates.is_empty() {
-        anyhow::bail!("未检测到任何可用的 API Key。请设置 (OPENAI_API_KEY, GOOGLE_API_KEY 等)");
-    }
-
-    // 2. Helper to get client for a role, with fallback
-    let get_client = |role_env: &str,
-                      default_fallback_idx: usize,
-                      used_providers: &mut Vec<String>|
-     -> anyhow::Result<ClientInfo> {
-        // Try precise env var first: PRO_PROVIDER=deepseek
-        if let Ok(p_name) = std::env::var(role_env) {
-            let p_key = p_name.to_lowercase();
-            if let Some(provider) = candidates.get(&p_key) {
-                return build_client(&p_key, *provider);
-            }
+    // Debug: Check if keys are present (do not log actual keys)
+    let check_key = |name: &str, env_var: &str| match std::env::var(env_var) {
+        Ok(val) => {
+            let mask = if val.len() > 4 {
+                format!("{}...", &val[..4])
+            } else {
+                "***".to_string()
+            };
             info!(
-                "指定的 {}={} 不可用 (无 API Key 或不支持)，将尝试自动回退",
-                role_env, p_name
+                "🔑 Key check: {} ({}) is SET (Starts with: {})",
+                name, env_var, mask
             );
         }
-
-        // Fallback: Pick first available that hasn't been heavily used if possible,
-        // but for simplicity just pick from available list skipping if we want round-robin
-        // Simple logic: Convert map to sorted vec to be deterministic
-        let mut sorted_keys: Vec<&String> = candidates.keys().collect();
-        sorted_keys.sort();
-
-        // Round robin index based on previously used count
-        // If we have enough providers, pick a unique one.
-        // If not, just cycle.
-        let idx = (default_fallback_idx + used_providers.len()) % sorted_keys.len();
-        let key = sorted_keys[idx];
-        used_providers.push(key.clone());
-
-        let provider = candidates[key];
-        build_client(key, provider)
+        Err(_) => info!("❌ Key check: {} ({}) is MISSING", name, env_var),
     };
+    check_key("DeepSeek", "DEEPSEEK_API_KEY");
+    check_key("Zhipu (智谱)", "ZHIPU_API_KEY");
+    check_key("Groq", "GROQ_API_KEY");
+    check_key("Mistral (fallback)", "MISTRAL_API_KEY");
 
-    let mut used = Vec::new();
-    let pro = get_client("PRO_PROVIDER", 0, &mut used)?;
-    let con = get_client("CON_PROVIDER", 1, &mut used)?;
-    let judge = get_client("JUDGE_PROVIDER", 2, &mut used)?;
+    let pro = build_client(&pro_model, "pro").await?;
+    let con = build_client(&con_model, "con").await?;
+    let judge = build_client(&judge_model, "judge").await?;
 
     Ok((pro, con, judge))
 }
 
-fn build_client(name: &str, provider: Provider) -> anyhow::Result<ClientInfo> {
-    let mut builder = AiClientBuilder::new(provider).with_timeout(Duration::from_secs(180));
-    if let Ok(proxy) = std::env::var("PROXY_URL") {
-        builder = builder.with_proxy(Some(&proxy));
+fn provider_name_from_model_id(model_id: &str) -> &str {
+    model_id.split('/').next().unwrap_or(model_id)
+}
+
+fn use_resilience() -> bool {
+    std::env::var("AI_DEBATE_RESILIENCE")
+        .ok()
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+fn fallback_for_role(role: &str) -> Vec<String> {
+    let fallback = match role {
+        "pro" => PRO_FALLBACK_MODEL_ID,
+        "con" => CON_FALLBACK_MODEL_ID,
+        "judge" => JUDGE_FALLBACK_MODEL_ID,
+        _ => return Vec::new(),
+    };
+    vec![fallback.to_string()]
+}
+
+async fn build_client(model_id: &str, role: &str) -> anyhow::Result<ClientInfo> {
+    let name = provider_name_from_model_id(model_id);
+    let mut builder = AiClientBuilder::new();
+
+    if use_resilience() {
+        builder = builder
+            .circuit_breaker_default()
+            .max_inflight(4);
     }
-    let client: AiClient = builder.build()?;
-    let default_model = client.default_chat_model();
-    info!(
-        "✅ Provider [{}] ready, default model: {}",
-        name, default_model
-    );
+
+    let fallbacks = fallback_for_role(role);
+    if !fallbacks.is_empty() {
+        builder = builder.with_fallbacks(fallbacks.clone());
+        info!("🔄 Fallback for {}: {:?}", role, fallbacks);
+    }
+
+    let client = builder
+        .build(model_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to build client for {}: {}", name, e))?;
+
+    info!("✅ Provider [{}] ready, model: {}", name, model_id);
+
     Ok(ClientInfo {
         name: name.to_string(),
+        model_id: model_id.to_string(),
         client: Arc::new(client),
-        default_model,
     })
 }

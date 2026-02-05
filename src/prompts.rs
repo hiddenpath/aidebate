@@ -1,4 +1,4 @@
-use ai_lib::Message;
+use ai_lib_rust::Message;
 
 use crate::types::{DebatePhase, Position};
 
@@ -69,5 +69,3 @@ pub fn build_judge_prompt(
         Message::user(format!("完整辩论记录：\n{}", history)),
     ]
 }
-
-

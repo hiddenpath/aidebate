@@ -14,8 +14,8 @@ use tokio::net::TcpListener;
 use tower_http::{cors::CorsLayer, timeout::TimeoutLayer};
 use tracing::info;
 
-use crate::app_metrics::SimpleMetrics;
-use crate::debate::{execute_judge_round, execute_one_round};
+use crate::app_metrics::{SimpleMetrics, Timer};
+use crate::debate::{execute_judge_round, execute_one_round, DebateStreamChunk};
 use crate::storage::{fetch_history, save_message};
 use crate::types::{
     client_for_side, AppState, DebatePhase, DebateRequest, HistoryMessage, HistoryQuery, Position,
@@ -47,7 +47,10 @@ pub async fn build_app(
         .route("/debate/stream", post(debate_stream))
         .route("/history", get(get_history).post(get_history_post))
         .route("/health", get(health))
-        .layer(TimeoutLayer::new(Duration::from_secs(420)))
+        .layer(TimeoutLayer::with_status_code(
+            axum::http::StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(420),
+        ))
         .layer(
             CorsLayer::new()
                 .allow_origin("*".parse::<HeaderValue>().unwrap())
@@ -82,8 +85,11 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
         "status": "ok",
         "uptime_secs": state.start_time.elapsed().as_secs(),
         "pro": state.pro.name,
+        "pro_model": state.pro.model_id,
         "con": state.con.name,
+        "con_model": state.con.model_id,
         "judge": state.judge.name,
+        "judge_model": state.judge.model_id,
     }))
 }
 
@@ -122,6 +128,7 @@ async fn debate_stream(
     let user_id = payload.user_id.clone();
     let session_id = payload.session_id.clone();
     let state = state.clone();
+    let mut timer = timer;
 
     let stream = async_stream::stream! {
         yield sse_json(&json!({"type":"phase","phase":"init","message":"辩论开始"}));
@@ -148,19 +155,22 @@ async fn debate_stream(
                     Ok((mut stream, provider)) => {
                         let mut full_content = String::new();
 
-                        // Stream the content as deltas for UI updates
                         while let Some(chunk_res) = stream.next().await {
                             match chunk_res {
-                                Ok(delta) => {
+                                Ok(DebateStreamChunk::Delta(delta)) => {
                                     if !delta.is_empty() {
                                         yield sse_json(&json!({"type":"delta","side":side.role_str(),"phase":phase.as_str(),"provider":provider,"content":delta}));
                                         full_content.push_str(&delta);
                                     }
                                 }
+                                Ok(DebateStreamChunk::Thinking(thinking)) => {
+                                    if !thinking.is_empty() {
+                                        yield sse_json(&json!({"type":"thinking","side":side.role_str(),"phase":phase.as_str(),"provider":provider,"content":thinking}));
+                                    }
+                                }
                                 Err(e) => {
+                                    if let Some(t) = timer.take() { t.stop(); }
                                     yield sse_json(&json!({"type":"error","message": format!("Stream error: {}", e)}));
-                                    // Don't break immediately, maybe try to salvage what we have?
-                                    // For now, simple return is safer to stop broken state.
                                     return;
                                 }
                             }
@@ -171,6 +181,7 @@ async fn debate_stream(
                         yield sse_json(&json!({"type":"phase_done","phase":phase.as_str(),"side":side.role_str(),"provider":provider}));
                     }
                     Err(e) => {
+                        if let Some(t) = timer.take() { t.stop(); }
                         yield sse_json(&json!({"type":"error","message": format!("辩论轮次失败: {}", e)}));
                         return;
                     }
@@ -196,19 +207,20 @@ async fn debate_stream(
                     yield sse_json(&json!({"type":"phase_done","phase":"judgement","side":"judge","provider":provider}));
                 }
                 Err(e) => {
+                    if let Some(t) = timer.take() { t.stop(); }
                     yield sse_json(&json!({"type":"error","message": format!("裁判阶段失败: {}", e)}));
                     return;
                 }
             }
         }
 
+        if let Some(t) = timer.take() {
+            t.stop();
+        }
         yield "data: {\"type\":\"done\"}\n\n".to_string();
     };
 
     let body_stream = stream.map(|chunk| Ok::<_, std::io::Error>(chunk));
-    if let Some(t) = timer {
-        t.stop();
-    }
     Response::builder()
         .status(200)
         .header("Content-Type", "text/event-stream")
@@ -233,7 +245,7 @@ async fn is_rate_limited(state: &Arc<AppState>, user_id: &str) -> bool {
     }
 }
 
-fn sse_error(msg: &str, timer: Option<Box<MetricsTimer>>) -> Response {
+fn sse_error(msg: &str, timer: Option<Box<dyn Timer + Send>>) -> Response {
     if let Some(t) = timer {
         t.stop();
     }
@@ -250,6 +262,3 @@ fn sse_error(msg: &str, timer: Option<Box<MetricsTimer>>) -> Response {
 fn sse_json(v: &serde_json::Value) -> String {
     format!("data: {}\n\n", v.to_string())
 }
-
-// Small alias to avoid retyping trait object type.
-type MetricsTimer = dyn ai_lib::metrics::Timer + Send;

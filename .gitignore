@@ -1,1 +1,35 @@
 /target
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Debug logs
+debug_log*.txt
+*.log
+
+# Internal/work documents
+docs/AI_PROTOCOL_NVIDIA_VERIFICATION.md
+*VERIFICATION*.md
+*REPORT*.md
+*PLAN*.md
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.pdb

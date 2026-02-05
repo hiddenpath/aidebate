@@ -2,16 +2,17 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use ai_lib::metrics::Metrics;
-use ai_lib::AiClient;
+use ai_lib_rust::AiClient;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
+
+use crate::app_metrics::Metrics;
 
 #[derive(Clone)]
 pub struct ClientInfo {
     pub name: String,
+    pub model_id: String,
     pub client: Arc<AiClient>,
-    pub default_model: String,
 }
 
 pub struct AppState {
@@ -112,5 +113,3 @@ pub fn rate_limit_window() -> (Duration, usize) {
     // 8 requests / 10s window as before
     (Duration::from_secs(10), 8)
 }
-
-
