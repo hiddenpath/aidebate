@@ -14,11 +14,17 @@
 debug_log*.txt
 *.log
 
-# Internal/work documents
+# Internal/work documents (DO NOT push to remote)
 docs/AI_PROTOCOL_NVIDIA_VERIFICATION.md
 *VERIFICATION*.md
 *REPORT*.md
 *PLAN*.md
+aidebate discuss*.md
+*实施方案*.md
+*关系说明*.md
+
+# Cursor IDE
+.cursor/
 
 # IDE and editor files
 .idea/

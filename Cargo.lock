@@ -38,8 +38,8 @@ dependencies = [
 
 [[package]]
 name = "ai-lib-rust"
-version = "0.6.5"
-source = "git+https://github.com/hiddenpath/ai-lib-rust?tag=v0.6.5#3eccc1adbb47b80867f906a15a966a41db80a4de"
+version = "0.6.6"
+source = "git+https://github.com/hiddenpath/ai-lib-rust?tag=v0.6.6#cb914565c51a8fc4a526bfb7698575b78ac651aa"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -53,6 +53,7 @@ dependencies = [
  "lru",
  "notify",
  "once_cell",
+ "regex",
  "reqwest 0.11.27",
  "serde",
  "serde_json",
@@ -69,7 +70,7 @@ dependencies = [
 
 [[package]]
 name = "aidebate"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ai-lib-rust",
  "anyhow",

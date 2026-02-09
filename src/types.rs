@@ -30,6 +30,12 @@ pub struct DebateRequest {
     pub user_id: String,
     pub session_id: String,
     pub topic: String,
+    /// Optional model override for Pro side (e.g. "deepseek/deepseek-chat")
+    pub pro_model: Option<String>,
+    /// Optional model override for Con side (e.g. "zhipu/glm-4-plus")
+    pub con_model: Option<String>,
+    /// Optional model override for Judge (e.g. "groq/llama-3.3-70b-versatile")
+    pub judge_model: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -44,6 +50,23 @@ pub struct HistoryMessage {
     pub phase: String,
     pub provider: Option<String>,
     pub content: String,
+}
+
+/// Provider information returned by the /api/models endpoint.
+#[derive(Serialize, Clone)]
+pub struct AvailableProvider {
+    pub provider: String,
+    pub display_name: String,
+    pub env_var: String,
+    pub has_key: bool,
+    pub models: Vec<AvailableModel>,
+}
+
+/// Model information returned by the /api/models endpoint.
+#[derive(Serialize, Clone)]
+pub struct AvailableModel {
+    pub model_id: String,
+    pub display_name: String,
 }
 
 #[derive(Clone, Copy)]
@@ -100,16 +123,7 @@ impl DebatePhase {
     }
 }
 
-/// Utility to pick client by side
-pub fn client_for_side<'a>(state: &'a Arc<AppState>, side: Position) -> &'a ClientInfo {
-    match side {
-        Position::Pro => &state.pro,
-        Position::Con => &state.con,
-        Position::Judge => &state.judge,
-    }
-}
-
 pub fn rate_limit_window() -> (Duration, usize) {
-    // 8 requests / 10s window as before
+    // 8 requests / 10s window
     (Duration::from_secs(10), 8)
 }

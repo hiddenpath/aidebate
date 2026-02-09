@@ -1,6 +1,6 @@
 [package]
 name = "aidebate"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["AI-Protocol Team"]
 license = "MIT OR Apache-2.0"
@@ -11,8 +11,8 @@ keywords = ["ai", "debate", "llm", "multi-provider"]
 categories = ["command-line-utilities", "web-programming"]
 
 [dependencies]
-# Use git dependency until ai-lib-rust 0.6.5 is published to crates.io
-ai-lib-rust = { git = "https://github.com/hiddenpath/ai-lib-rust", tag = "v0.6.5" }
+# Use git dependency - ai-lib-rust with streaming, tool calling, token usage
+ai-lib-rust = { git = "https://github.com/hiddenpath/ai-lib-rust", tag = "v0.6.6" }
 anyhow = "1.0.100"
 async-stream = "0.3"
 async-trait = "0.1"

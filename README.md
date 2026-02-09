@@ -1,109 +1,124 @@
-# AI Debate v0.1.0
+# AI Debate v0.2.0
 
-**基于 [ai-lib-rust](https://github.com/hiddenpath/ai-lib-rust) 构建的 AI 辩论系统**
+**Multi-model AI debate arena built on [ai-lib-rust](https://github.com/hiddenpath/ai-lib-rust) and [ai-protocol](https://github.com/hiddenpath/ai-protocol).**
 
-三方 AI 大模型进行结构化辩论：正方、反方各陈述观点，最后由裁判进行裁决。
+Three AI models engage in a structured debate: Pro and Con present arguments across four rounds, then a Judge delivers the verdict.
 
-## 功能特性
+## Features
 
-- **4 轮辩论流程**：开篇陈词 → 反驳 → 防守 → 总结陈词
-- **多 Provider 支持**：DeepSeek (正方) / 智谱 GLM (反方) / Groq (裁判)
-- **自动 Fallback**：主模型失败时自动切换到 Mistral 备用模型
-- **实时流式响应**：支持推理过程的实时展示
-- **结构化输出**：Markdown 格式，包含 Reasoning 和 Final Position
-- **历史记录**：SQLite 数据库存储辩论历史
-- **现代化 UI**：响应式前端，支持中断和重新开始
+- **4-Round Debate Flow**: Opening → Rebuttal → Defense → Closing → Judgement
+- **Dynamic Model Selection**: Choose any available model for each role via the UI
+- **Auto Provider Detection**: Automatically detects configured API keys and shows available models
+- **Multi-Provider Support**: DeepSeek, Zhipu GLM, Groq, Mistral, OpenAI, Anthropic, MiniMax
+- **Automatic Fallback**: Primary model failures trigger automatic switch to backup model
+- **Real-time Streaming**: All rounds (including Judge) use true SSE streaming
+- **Token Usage Tracking**: Per-round token consumption display
+- **Reasoning Display**: Collapsible thinking/reasoning blocks when supported by model
+- **Debate History**: SQLite database for persistent debate records
+- **Modern UI**: Dark theme, responsive layout, real Markdown rendering
 
-## 技术架构
+## Architecture
 
-### 后端
-- **框架**: Axum (异步 web 框架)
-- **AI 集成**: [ai-lib-rust](https://github.com/hiddenpath/ai-lib-rust) v0.6.5
-- **协议规范**: [ai-protocol](https://github.com/hiddenpath/ai-protocol)
-- **数据库**: SQLx + SQLite
-- **流式处理**: Server-Sent Events (SSE)
+### Backend
+- **Framework**: Axum (async web framework)
+- **AI Integration**: [ai-lib-rust](https://github.com/hiddenpath/ai-lib-rust) v0.6.6
+- **Protocol**: [ai-protocol](https://github.com/hiddenpath/ai-protocol)
+- **Database**: SQLx + SQLite
+- **Streaming**: Server-Sent Events (SSE)
 
-### 前端
-- **渲染**: Marked.js (Markdown)
-- **样式**: 现代化暗色主题
-- **实时更新**: SSE 客户端
+### Frontend
+- **Markdown**: [Marked.js](https://marked.js.org/) (CDN)
+- **Style**: Modern dark theme with responsive layout
+- **Real-time**: SSE client with streaming updates
 
-## 模型配置
+## Default Model Configuration
 
-| 角色 | 主模型 | 备用模型 |
-|------|--------|----------|
-| 正方 | `deepseek/deepseek-chat` | `mistral/mistral-small-latest` |
-| 反方 | `zhipu/glm-4-plus` | `mistral/mistral-small-latest` |
-| 裁判 | `groq/llama-3.3-70b-versatile` | `mistral/mistral-small-latest` |
+| Role | Default Model | Fallback |
+|------|---------------|----------|
+| Pro | `deepseek/deepseek-chat` | `mistral/mistral-small-latest` |
+| Con | `zhipu/glm-4-plus` | `mistral/mistral-small-latest` |
+| Judge | `groq/llama-3.3-70b-versatile` | `mistral/mistral-small-latest` |
 
-## 环境配置
+Users can override these selections in the UI before starting a debate.
+
+## Quick Start
+
+### 1. Configure API Keys
 
 ```bash
-# 必需的 API Keys
-export DEEPSEEK_API_KEY="your_deepseek_key"
-export ZHIPU_API_KEY="your_zhipu_key"
-export GROQ_API_KEY="your_groq_key"
-export MISTRAL_API_KEY="your_mistral_key"  # fallback
-
-# 可选配置
-export AI_PROTOCOL_DIR="/path/to/ai-protocol"  # 本地协议目录
-export AI_PROXY_URL="http://127.0.0.1:7890"    # 代理设置
-
-# 自定义模型 (可选，覆盖默认配置)
-export PRO_MODEL_ID="deepseek/deepseek-chat"
-export CON_MODEL_ID="zhipu/glm-4-plus"
-export JUDGE_MODEL_ID="groq/llama-3.3-70b-versatile"
+cp .env.example .env
+# Edit .env and add your API keys (at least one provider required)
 ```
 
-## 运行方式
+### 2. Build and Run
 
 ```bash
 cargo run
 ```
 
-访问 `http://127.0.0.1:3000`
+### 3. Open in Browser
 
-## API 接口
+Navigate to `http://127.0.0.1:3000`
 
-| 方法 | 路径 | 描述 |
-|------|------|------|
-| GET | `/` | 主页面 |
-| GET | `/health` | 健康检查，返回模型配置 |
-| POST | `/debate/stream` | 发起辩论，返回 SSE 流 |
-| GET | `/history` | 获取辩论历史 |
+## Environment Configuration
 
-## 辩论流程
+See [.env.example](.env.example) for all available options. Key variables:
 
-1. **用户输入议题** (自然语言描述)
-2. **系统初始化 3 个 AI Client** (正方、反方、裁判)
-3. **4 轮辩论**:
-   - 正方开篇陈词 → 反方开篇陈词
-   - 正方反驳 → 反方反驳
-   - 正方防守 → 反方防守
-   - 正方总结 → 反方总结
-4. **裁判裁决**: 基于完整辩论记录进行推理和裁决
+```bash
+# Required: At least one AI provider API key
+DEEPSEEK_API_KEY=sk-your-key
+ZHIPU_API_KEY=your-key
+GROQ_API_KEY=gsk_your-key
+MISTRAL_API_KEY=your-key    # recommended as fallback
 
-## ai-lib-rust 特性利用
+# Optional: Additional providers
+OPENAI_API_KEY=sk-your-key
+ANTHROPIC_API_KEY=sk-ant-your-key
 
-- **统一 Client 接口**: `AiClient::new("provider/model")` 
-- **自动 Fallback**: `AiClientBuilder::with_fallbacks()`
-- **流式响应**: `execute_stream()` 返回 `StreamingEvent`
-- **错误分类**: 401 认证错误自动触发 fallback
-- **协议驱动**: 所有行为由 ai-protocol manifest 定义
-
-## 依赖
-
-```toml
-[dependencies]
-ai-lib-rust = { git = "https://github.com/hiddenpath/ai-lib-rust", tag = "v0.6.5" }
+# Optional: Override default models
+PRO_MODEL_ID=deepseek/deepseek-chat
+CON_MODEL_ID=zhipu/glm-4-plus
+JUDGE_MODEL_ID=groq/llama-3.3-70b-versatile
 ```
 
-## 相关项目
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | Main page |
+| GET | `/health` | Health check with model configuration |
+| GET | `/api/models` | Available providers and models (for UI) |
+| POST | `/debate/stream` | Start a debate, returns SSE stream |
+| GET | `/history` | Fetch debate history |
+
+## Debate Flow
+
+1. **User enters topic** and optionally selects models for each role
+2. **System initializes AI clients** (Pro, Con, Judge) with fallback support
+3. **4 debate rounds** (each round: Pro speaks → Con speaks):
+   - Opening Statement
+   - Rebuttal
+   - Defense
+   - Closing Statement
+4. **Judge delivers verdict** based on the complete debate transcript
+
+## ai-lib-rust Features Used
+
+- **Unified Client Interface**: `AiClient::new("provider/model")`
+- **Automatic Fallback**: `AiClientBuilder::with_fallbacks()`
+- **Streaming**: `execute_stream()` returns `StreamingEvent` stream
+- **Token Usage**: `StreamingEvent::Metadata { usage }` for token tracking
+- **Error Classification**: Auth errors trigger automatic fallback
+- **Protocol-Driven**: All behavior defined by ai-protocol manifests
+
+## Related Projects
 
 - [ai-lib-rust](https://github.com/hiddenpath/ai-lib-rust) - Protocol Runtime for AI-Protocol
+- [ai-lib-python](https://github.com/hiddenpath/ai-lib-python) - Python Runtime for AI-Protocol
 - [ai-protocol](https://github.com/hiddenpath/ai-protocol) - Provider-agnostic AI specification
+- [aidebate-python](https://github.com/hiddenpath/aidebate-python) - Python port of this project
 
-## 许可证
+## License
 
 This project is licensed under either of:
 

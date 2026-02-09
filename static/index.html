@@ -3,266 +3,628 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Debate (ai-lib)</title>
+  <title>AI Debate v0.2 — Multi-Model Arena</title>
   <style>
-    * { box-sizing: border-box; }
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; background: #0f172a; color: #e2e8f0; display: flex; flex-direction: column; min-height: 100vh; }
-    header { padding: 16px 20px; background: #111827; border-bottom: 1px solid #1f2937; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
-    header h1 { margin: 0; font-size: 20px; }
-    #providers { font-size: 13px; color: #94a3b8; }
-    main { flex: 1; display: grid; grid-template-columns: 320px 1fr; gap: 12px; padding: 12px; }
+    :root {
+      --bg: #0a0e1a; --surface: #111827; --surface2: #1a2236;
+      --border: #1f2937; --border-hover: #334155;
+      --text: #e2e8f0; --text2: #94a3b8; --text3: #64748b;
+      --pro: #22c55e; --pro-bg: rgba(34,197,94,0.08);
+      --con: #f97316; --con-bg: rgba(249,115,22,0.08);
+      --judge: #a855f7; --judge-bg: rgba(168,85,247,0.08);
+      --accent: #6366f1; --accent2: #22d3ee;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* Header */
+    header { padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+    header h1 { font-size: 18px; font-weight: 700; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .header-controls { display: flex; gap: 8px; align-items: center; }
+
+    /* Buttons */
+    .btn { border: none; border-radius: var(--radius); padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: white; }
+    .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-secondary { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
+    .btn-secondary:hover { border-color: var(--border-hover); background: var(--surface); }
+    .btn-danger { background: #dc2626; color: white; }
+
+    /* Layout */
+    main { flex: 1; display: grid; grid-template-columns: 300px 1fr; gap: 0; }
     @media (max-width: 960px) { main { grid-template-columns: 1fr; } }
-    .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 14px 16px; }
-    label { display: block; font-size: 13px; color: #cbd5e1; margin-bottom: 6px; }
-    textarea { width: 100%; background: #0b1223; border: 1px solid #1f2937; border-radius: 10px; color: #e2e8f0; padding: 12px; min-height: 96px; resize: vertical; }
-    button { background: linear-gradient(135deg, #6366f1, #22d3ee); color: white; border: none; border-radius: 10px; padding: 10px 14px; font-weight: 600; cursor: pointer; }
-    button:disabled { opacity: 0.6; cursor: not-allowed; }
-    #history { display: flex; flex-direction: column; gap: 12px; max-height: 74vh; overflow-y: auto; }
-    .msg { border-radius: 12px; padding: 12px; border: 1px solid #1f2937; background: #0b1223; position: relative; }
-    .msg .meta { font-size: 12px; color: #cbd5e1; margin-bottom: 6px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-    .msg .content { line-height: 1.55; color: #e2e8f0; }
-    .msg.pro { border-left: 3px solid #22c55e; }
-    .msg.con { border-left: 3px solid #f97316; }
-    .msg.judge { border-left: 3px solid #a855f7; }
+
+    /* Sidebar */
+    .sidebar { background: var(--surface); border-right: 1px solid var(--border); padding: 16px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; max-height: calc(100vh - 52px); }
+    .section { display: flex; flex-direction: column; gap: 8px; }
+    .section-title { font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--text3); letter-spacing: 0.5px; }
+
+    /* Form elements */
+    textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 10px 12px; font-size: 14px; min-height: 80px; resize: vertical; font-family: inherit; }
+    textarea:focus { outline: none; border-color: var(--accent); }
+    select { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px 10px; font-size: 13px; cursor: pointer; font-family: inherit; }
+    select:focus { outline: none; border-color: var(--accent); }
+    select:disabled { opacity: 0.5; }
+    label { font-size: 12px; color: var(--text2); display: flex; align-items: center; gap: 4px; }
+    .label-icon { font-size: 14px; }
+
+    /* Model selector */
+    .model-row { display: flex; flex-direction: column; gap: 4px; }
+    .model-role { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .model-role.pro { color: var(--pro); }
+    .model-role.con { color: var(--con); }
+    .model-role.judge { color: var(--judge); }
+
+    /* Stats */
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .stat-item { background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+    .stat-label { font-size: 10px; color: var(--text3); text-transform: uppercase; }
+    .stat-value { font-size: 16px; font-weight: 700; color: var(--text); }
+
+    /* Debate panel */
+    .debate-panel { padding: 16px; overflow-y: auto; max-height: calc(100vh - 52px); display: flex; flex-direction: column; gap: 12px; }
+    .session-bar { font-size: 11px; color: var(--text3); padding-bottom: 8px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+
+    /* Message cards */
+    .msg { border-radius: var(--radius); padding: 14px 16px; border: 1px solid var(--border); background: var(--surface); position: relative; }
+    .msg.pro { border-left: 3px solid var(--pro); background: var(--pro-bg); }
+    .msg.con { border-left: 3px solid var(--con); background: var(--con-bg); }
+    .msg.judge { border-left: 3px solid var(--judge); background: var(--judge-bg); }
+    .msg .meta { font-size: 12px; color: var(--text2); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
+    .msg .content { line-height: 1.6; color: var(--text); font-size: 14px; }
+
+    /* Badges */
     .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
-    .badge.pro { background: rgba(34,197,94,0.12); color: #4ade80; }
-    .badge.con { background: rgba(249,115,22,0.12); color: #fb923c; }
-    .badge.judge { background: rgba(168,85,247,0.12); color: #c084fc; }
-    .badge.phase { background: rgba(148,163,184,0.16); color: #e2e8f0; margin-left: 6px; }
-    .system { font-size: 12px; color: #94a3b8; }
-    .pill-btn { background: #0b1223; border: 1px solid #1f2937; color: #e2e8f0; border-radius: 999px; padding: 8px 12px; cursor: pointer; }
-    .pill-btn:hover { border-color: #334155; }
-    .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-    .status { font-size: 12px; color: #cbd5e1; margin-top: 8px; }
-    .markdown-content h2 { margin: 8px 0; font-size: 15px; }
-    .markdown-content p { margin: 6px 0; }
-    .markdown-content ul { margin: 6px 0 6px 18px; }
-    .markdown-content code { background: #1f2937; padding: 2px 4px; border-radius: 4px; }
+    .badge.pro { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .badge.con { background: rgba(249,115,22,0.15); color: #fb923c; }
+    .badge.judge { background: rgba(168,85,247,0.15); color: #c084fc; }
+    .badge.phase { background: rgba(148,163,184,0.12); color: var(--text); margin-left: 4px; }
+    .badge.model { background: rgba(99,102,241,0.12); color: #818cf8; margin-left: 4px; font-weight: 500; }
+
+    /* Markdown content */
+    .markdown-content h2 { margin: 10px 0 6px; font-size: 15px; color: var(--accent2); }
+    .markdown-content h3 { margin: 8px 0 4px; font-size: 14px; }
+    .markdown-content p { margin: 4px 0; }
+    .markdown-content ul, .markdown-content ol { margin: 4px 0 4px 20px; }
+    .markdown-content li { margin: 2px 0; }
+    .markdown-content code { background: var(--surface2); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+    .markdown-content pre { background: var(--bg); padding: 10px; border-radius: 8px; overflow-x: auto; margin: 6px 0; }
+    .markdown-content pre code { background: none; padding: 0; }
+    .markdown-content blockquote { border-left: 3px solid var(--border); padding-left: 12px; color: var(--text2); margin: 6px 0; }
+    .markdown-content strong { color: #f1f5f9; }
+    .markdown-content a { color: var(--accent2); }
+
+    /* Thinking block */
+    .thinking-toggle { font-size: 11px; color: var(--text3); cursor: pointer; user-select: none; margin-top: 4px; }
+    .thinking-toggle:hover { color: var(--text2); }
+    .thinking-content { font-size: 12px; color: var(--text3); background: var(--bg); padding: 8px 10px; border-radius: 6px; margin-top: 4px; max-height: 150px; overflow-y: auto; display: none; }
+    .thinking-content.show { display: block; }
+
+    /* Status bar */
+    .status { font-size: 12px; color: var(--text2); padding: 6px 0; }
+    .status.error { color: #f87171; }
+    .status.success { color: #4ade80; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+    /* Empty state */
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text3); }
+    .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state p { font-size: 14px; }
+
+    /* Usage tag */
+    .usage-tag { font-size: 10px; color: var(--text3); background: var(--bg); padding: 2px 6px; border-radius: 4px; }
   </style>
 </head>
 <body>
   <header>
-    <h1>🤖 AI Debate · 4 轮 + 裁判</h1>
-    <div class="controls">
-      <button id="new-session">🔄 新对局</button>
-      <button id="start-btn">▶️ 开始辩论</button>
-      <button class="pill-btn" id="load-history">📚 加载历史</button>
+    <h1>AI Debate Arena v0.2</h1>
+    <div class="header-controls">
+      <button class="btn btn-secondary" id="new-session">New Session</button>
+      <button class="btn btn-primary" id="start-btn">Start Debate</button>
+      <button class="btn btn-secondary" id="load-history">Load History</button>
     </div>
-    <div id="providers">加载中...</div>
   </header>
 
   <main>
-    <section class="card">
-      <label for="topic">议题（自然语言描述）</label>
-      <textarea id="topic" placeholder="例：人工智能是否应当用于司法判决辅助？"></textarea>
-      <div class="status" id="status">等待输入...</div>
-    </section>
+    <aside class="sidebar">
+      <!-- Topic -->
+      <div class="section">
+        <div class="section-title">Topic</div>
+        <textarea id="topic" placeholder="e.g. Should AI be used in judicial decision-making?"></textarea>
+      </div>
 
-    <section class="card">
-      <div class="system">会话 ID：<span id="session-span"></span></div>
-      <div id="history"></div>
+      <!-- Model Selection -->
+      <div class="section">
+        <div class="section-title">Model Configuration</div>
+        <div class="model-row">
+          <label><span class="model-role pro">Pro (Affirmative)</span></label>
+          <select id="model-pro"><option value="">Loading...</option></select>
+        </div>
+        <div class="model-row">
+          <label><span class="model-role con">Con (Negative)</span></label>
+          <select id="model-con"><option value="">Loading...</option></select>
+        </div>
+        <div class="model-row">
+          <label><span class="model-role judge">Judge</span></label>
+          <select id="model-judge"><option value="">Loading...</option></select>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="section">
+        <div class="section-title">Statistics</div>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-label">Rounds</div>
+            <div class="stat-value" id="stat-rounds">0/4</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Tokens</div>
+            <div class="stat-value" id="stat-tokens">0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Status -->
+      <div class="section">
+        <div class="status" id="status">Ready</div>
+      </div>
+    </aside>
+
+    <section class="debate-panel" id="debate-panel">
+      <div class="session-bar">
+        <span>Session: <span id="session-span"></span></span>
+        <span id="providers-info"></span>
+      </div>
+      <div id="history">
+        <div class="empty-state">
+          <div class="icon">&#9878;</div>
+          <p>Enter a topic and click <strong>Start Debate</strong> to begin.</p>
+          <p style="margin-top:6px; font-size:12px; color:var(--text3);">Three AI models will debate: Pro vs Con, judged by a third.</p>
+        </div>
+      </div>
     </section>
   </main>
 
-  <script src="/js/marked.min.js"></script>
+  <!-- Marked.js from CDN for real Markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script>
-    // --- util ---
-    function uuid() { return Math.random().toString(36).slice(2,10); }
-    function ensureIds(){
+    // =========================================================================
+    // State
+    // =========================================================================
+    let streaming = false;
+    let controller = null;
+    let historyItems = [];
+    let totalTokens = 0;
+    let completedRounds = 0;
+    let modelsData = null;
+
+    // =========================================================================
+    // Utilities
+    // =========================================================================
+    function uuid() { return Math.random().toString(36).slice(2, 10); }
+
+    function ensureIds() {
       let uid = localStorage.getItem('aidebate_uid');
-      if(!uid){ uid = 'user-' + uuid(); localStorage.setItem('aidebate_uid', uid); }
+      if (!uid) { uid = 'user-' + uuid(); localStorage.setItem('aidebate_uid', uid); }
       let sid = localStorage.getItem('aidebate_sid');
-      if(!sid){ sid = 'session-' + Date.now() + '-' + uuid(); localStorage.setItem('aidebate_sid', sid); }
-      return {uid,sid};
+      if (!sid) { sid = 'session-' + Date.now() + '-' + uuid(); localStorage.setItem('aidebate_sid', sid); }
+      return { uid, sid };
     }
-    function newSession(){
-      const sid = 'session-' + Date.now() + '-' + uuid();
+    let { uid, sid } = ensureIds();
+
+    function newSession() {
+      sid = 'session-' + Date.now() + '-' + uuid();
       localStorage.setItem('aidebate_sid', sid);
       renderSession();
       historyItems = [];
+      totalTokens = 0;
+      completedRounds = 0;
+      updateStats();
       renderHistory();
     }
-    function renderSession(){
-      document.getElementById('session-span').textContent = localStorage.getItem('aidebate_sid');
+
+    function renderSession() {
+      document.getElementById('session-span').textContent = sid;
     }
-    function renderMarkdown(src){
+    renderSession();
+
+    function renderMarkdown(src) {
       if (window.marked && typeof marked.parse === 'function') {
-        return marked.parse(src.replace(/\r\n/g,'\n').replace(/\r/g,'\n'), {
-          gfm: true,
-          breaks: true,
-          smartLists: true,
-          headerIds: false,
-          mangle: false
-        });
+        try {
+          return marked.parse(String(src || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n'), {
+            gfm: true, breaks: true, headerIds: false, mangle: false
+          });
+        } catch (e) { /* fallback below */ }
       }
-      return src.replace(/\n/g, '<br>');
+      // Fallback: basic HTML escaping
+      return String(src || '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br>');
     }
-    function badge(side, phase){
-      const s = side==='pro'?'pro':side==='con'?'con':'judge';
-      return '<span class="badge '+s+'">'+side.toUpperCase()+'</span><span class="badge phase">'+phase+'</span>';
+
+    function setStatus(msg, type) {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = 'status' + (type ? ' ' + type : '');
     }
-    function addMessage(side, phase, provider, content){
-      historyItems.push({side, phase, provider, content});
+
+    function updateStats() {
+      document.getElementById('stat-rounds').textContent = completedRounds + '/4';
+      document.getElementById('stat-tokens').textContent = totalTokens.toLocaleString();
+    }
+
+    // =========================================================================
+    // Model Selection
+    // =========================================================================
+    async function fetchModels() {
+      try {
+        const res = await fetch('/api/models');
+        modelsData = await res.json();
+        populateModelDropdowns(modelsData);
+        // Also update provider info
+        const d = modelsData.defaults;
+        document.getElementById('providers-info').textContent =
+          `Pro: ${d.pro} | Con: ${d.con} | Judge: ${d.judge}`;
+      } catch (e) {
+        console.warn('Failed to fetch models:', e);
+      }
+    }
+
+    function populateModelDropdowns(data) {
+      const roles = ['pro', 'con', 'judge'];
+      for (const role of roles) {
+        const select = document.getElementById('model-' + role);
+        select.innerHTML = '';
+
+        // Default option
+        const defaultModel = data.defaults[role];
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = `Default (${defaultModel})`;
+        select.appendChild(defaultOpt);
+
+        // Group by provider
+        for (const provider of data.providers) {
+          if (!provider.has_key) continue;
+          const group = document.createElement('optgroup');
+          group.label = provider.display_name;
+          for (const model of provider.models) {
+            const opt = document.createElement('option');
+            opt.value = model.model_id;
+            opt.textContent = model.display_name;
+            if (model.model_id === defaultModel) opt.selected = false; // don't pre-select, default option handles it
+            group.appendChild(opt);
+          }
+          select.appendChild(group);
+        }
+
+        // Unavailable providers (disabled)
+        const unavailable = data.providers.filter(p => !p.has_key);
+        if (unavailable.length > 0) {
+          const group = document.createElement('optgroup');
+          group.label = 'Not Configured';
+          for (const provider of unavailable) {
+            for (const model of provider.models) {
+              const opt = document.createElement('option');
+              opt.value = model.model_id;
+              opt.textContent = `${model.display_name} (${provider.env_var} missing)`;
+              opt.disabled = true;
+              group.appendChild(opt);
+            }
+          }
+          select.appendChild(group);
+        }
+      }
+    }
+
+    fetchModels();
+
+    // =========================================================================
+    // History Rendering
+    // =========================================================================
+    function badgeHtml(side, phase, model) {
+      const s = side === 'pro' ? 'pro' : side === 'con' ? 'con' : 'judge';
+      const sideLabel = side === 'pro' ? 'PRO' : side === 'con' ? 'CON' : 'JUDGE';
+      let html = `<span class="badge ${s}">${sideLabel}</span>`;
+      if (phase) html += `<span class="badge phase">${phase}</span>`;
+      if (model) html += `<span class="badge model">${model}</span>`;
+      return html;
+    }
+
+    function renderHistory() {
+      const box = document.getElementById('history');
+      if (historyItems.length === 0) {
+        box.innerHTML = `<div class="empty-state"><div class="icon">&#9878;</div>
+          <p>Enter a topic and click <strong>Start Debate</strong> to begin.</p>
+          <p style="margin-top:6px;font-size:12px;color:var(--text3)">Three AI models will debate: Pro vs Con, judged by a third.</p></div>`;
+        return;
+      }
+
+      box.innerHTML = '';
+      historyItems.forEach((msg, idx) => {
+        const div = document.createElement('div');
+        div.className = 'msg ' + msg.side;
+        div.id = 'msg-' + idx;
+
+        // Meta row
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.innerHTML = `<span>${badgeHtml(msg.side, msg.phase, msg.model)}</span>`;
+        if (msg.usage_text) {
+          meta.innerHTML += `<span class="usage-tag">${msg.usage_text}</span>`;
+        }
+        div.appendChild(meta);
+
+        // Content
+        const content = document.createElement('div');
+        content.className = 'content markdown-content';
+        const raw = msg.content || '';
+        if (raw === '(generating...)') {
+          content.innerHTML = '<span style="color:var(--text3)">Generating...</span>';
+        } else {
+          content.innerHTML = renderMarkdown(raw);
+        }
+        div.appendChild(content);
+
+        // Thinking (collapsible)
+        if (msg.thinking) {
+          const toggle = document.createElement('div');
+          toggle.className = 'thinking-toggle';
+          toggle.textContent = '▸ Show reasoning';
+          const thinkDiv = document.createElement('div');
+          thinkDiv.className = 'thinking-content';
+          thinkDiv.textContent = msg.thinking;
+          toggle.addEventListener('click', () => {
+            const show = !thinkDiv.classList.contains('show');
+            thinkDiv.classList.toggle('show', show);
+            toggle.textContent = show ? '▾ Hide reasoning' : '▸ Show reasoning';
+          });
+          div.appendChild(toggle);
+          div.appendChild(thinkDiv);
+        }
+
+        box.appendChild(div);
+      });
+
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function addMessage(side, phase, model, content) {
+      historyItems.push({ side, phase, model, content, thinking: '', usage_text: '' });
       renderHistory();
     }
-    function updateLast(side, phase, content){
-      for(let i=historyItems.length-1;i>=0;i--){
-        if(historyItems[i].side===side && historyItems[i].phase===phase){
+
+    function updateLast(side, phase, content) {
+      for (let i = historyItems.length - 1; i >= 0; i--) {
+        if (historyItems[i].side === side && historyItems[i].phase === phase) {
           historyItems[i].content = content;
-          renderHistory();
+          // Efficient DOM update: only update this message's content
+          const msgEl = document.getElementById('msg-' + i);
+          if (msgEl) {
+            const contentEl = msgEl.querySelector('.content');
+            if (contentEl) contentEl.innerHTML = renderMarkdown(content);
+            const panel = document.getElementById('debate-panel');
+            panel.scrollTop = panel.scrollHeight;
+          } else {
+            renderHistory();
+          }
           return;
         }
       }
       addMessage(side, phase, null, content);
     }
 
-    // --- state ---
-    let {uid, sid} = ensureIds();
-    let streaming = false;
-    let controller = null;
-    let historyItems = [];
-
-    renderSession();
-
-    async function fetchProviders(){
-      try{
-        const res = await fetch('/health');
-        const data = await res.json();
-        document.getElementById('providers').textContent = `正方: ${data.pro} · 反方: ${data.con} · 裁判: ${data.judge}`;
-      }catch{ document.getElementById('providers').textContent = '无法获取 Provider 信息'; }
-    }
-    fetchProviders();
-
-    function renderHistory(){
-      const box = document.getElementById('history');
-      box.innerHTML = '';
-      historyItems.forEach(msg=>{
-        const div = document.createElement('div');
-        div.className = 'msg ' + msg.side;
-        const meta = document.createElement('div');
-        meta.className = 'meta';
-        meta.innerHTML = `<span>${badge(msg.side, msg.phase||'')}</span><span>${msg.provider||''}</span>`;
-        const content = document.createElement('div');
-        content.className = 'content markdown-content';
-        content.innerHTML = renderMarkdown(msg.content||'');
-        div.appendChild(meta); div.appendChild(content);
-        box.appendChild(div);
-      });
-      box.scrollTop = box.scrollHeight;
+    function appendThinking(side, phase, thinking) {
+      for (let i = historyItems.length - 1; i >= 0; i--) {
+        if (historyItems[i].side === side && historyItems[i].phase === phase) {
+          historyItems[i].thinking += thinking;
+          return;
+        }
+      }
     }
 
-    async function loadHistory(){
-      const params = new URLSearchParams({ user_id: uid, session_id: sid });
-      const res = await fetch('/history?'+params.toString());
-      const data = await res.json();
-      historyItems = (data.history||[]).map(h=>({side:h.role, phase:h.phase, provider:h.provider, content:h.content}));
-      renderHistory();
+    function setUsage(side, phase, usage) {
+      for (let i = historyItems.length - 1; i >= 0; i--) {
+        if (historyItems[i].side === side && historyItems[i].phase === phase) {
+          // Parse usage (different providers have different formats)
+          let tokens = 0;
+          if (usage.total_tokens) tokens = usage.total_tokens;
+          else if (usage.prompt_tokens && usage.completion_tokens) tokens = usage.prompt_tokens + usage.completion_tokens;
+          if (tokens > 0) {
+            historyItems[i].usage_text = tokens.toLocaleString() + ' tokens';
+            totalTokens += tokens;
+            updateStats();
+          }
+          return;
+        }
+      }
     }
 
-    async function startDebate(){
-      if(streaming) {
+    function getExistingContent(side, phase) {
+      for (let i = historyItems.length - 1; i >= 0; i--) {
+        if (historyItems[i].side === side && historyItems[i].phase === phase) return historyItems[i].content || '';
+      }
+      return '';
+    }
+
+    // =========================================================================
+    // Debate Control
+    // =========================================================================
+    async function startDebate() {
+      if (streaming) {
         controller?.abort();
-        setStatus('已中断');
+        setStatus('Stopped', 'error');
         streaming = false;
         controller = null;
+        document.getElementById('start-btn').textContent = 'Start Debate';
         return;
       }
 
       const topic = document.getElementById('topic').value.trim();
-      if(!topic){ setStatus('请先输入议题'); return; }
+      if (!topic) { setStatus('Please enter a topic', 'error'); return; }
 
-      setStatus('辩论进行中…');
+      // Get selected models (empty string = use default)
+      const proModel = document.getElementById('model-pro').value || undefined;
+      const conModel = document.getElementById('model-con').value || undefined;
+      const judgeModel = document.getElementById('model-judge').value || undefined;
+
+      setStatus('Starting debate...', '');
       streaming = true;
       controller = new AbortController();
       historyItems = [];
+      totalTokens = 0;
+      completedRounds = 0;
+      updateStats();
       renderHistory();
+      document.getElementById('start-btn').textContent = 'Stop';
+      document.getElementById('start-btn').className = 'btn btn-danger';
 
       try {
-        const body = { user_id: uid, session_id: sid, topic };
+        const body = {
+          user_id: uid,
+          session_id: sid,
+          topic,
+          pro_model: proModel,
+          con_model: conModel,
+          judge_model: judgeModel,
+        };
         const resp = await fetch('/debate/stream', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
-          signal: controller.signal
+          signal: controller.signal,
         });
 
-        if(!resp.ok){
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        if (!resp.body) throw new Error('Empty response body');
 
-        if(!resp.body){
-          throw new Error('响应体为空');
-        }
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
 
-        const reader = resp.body.getReader(); const decoder = new TextDecoder();
-        let buf='';
-
-        while(true){
-          const {done,value} = await reader.read();
-          if(done) break;
-          buf += decoder.decode(value,{stream:true});
-          const parts = buf.split('\n\n'); buf = parts.pop();
-          for(const p of parts){
-            if(!p.trim()) continue;
-            const lines = p.split('\n').filter(l=>l.startsWith('data:'));
-            if(lines.length===0) continue;
-            const jsonStr = lines.map(l=> l.startsWith('data: ')? l.slice(6): l.slice(5)).join('\n');
-            let evt=null; try{ evt=JSON.parse(jsonStr); }catch(e){ console.warn('Parse error:',e,jsonStr); continue; }
-            handleEvent(evt);
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split('\n\n');
+          buf = parts.pop();
+          for (const p of parts) {
+            if (!p.trim()) continue;
+            const lines = p.split('\n').filter(l => l.startsWith('data:'));
+            if (lines.length === 0) continue;
+            const jsonStr = lines.map(l => l.startsWith('data: ') ? l.slice(6) : l.slice(5)).join('\n');
+            try {
+              const evt = JSON.parse(jsonStr);
+              handleEvent(evt);
+            } catch (e) { console.warn('Parse error:', e, jsonStr); }
           }
         }
-      } catch(e) {
-        if(e.name === 'AbortError'){
-          setStatus('已中断');
+      } catch (e) {
+        if (e.name === 'AbortError') {
+          setStatus('Debate stopped by user', 'error');
         } else {
-          setStatus('错误: ' + e.message);
+          setStatus('Error: ' + e.message, 'error');
           console.error('Debate error:', e);
         }
       } finally {
         streaming = false;
         controller = null;
+        document.getElementById('start-btn').textContent = 'Start Debate';
+        document.getElementById('start-btn').className = 'btn btn-primary';
       }
     }
 
-    function handleEvent(evt){
-      if(!evt || typeof evt!=='object') return;
-      if(evt.type==='delta'){
-        updateLast(evt.side, evt.phase, (getExistingContent(evt.side, evt.phase) || '') + evt.content);
-      } else if(evt.type==='phase_start'){
-        addMessage(evt.side, evt.phase, evt.provider, '(生成中...)');
-        setStatus(`正在生成：${evt.title} (${evt.provider})`);
-        updateStartButton('⏹️ 停止辩论');
-      } else if(evt.type==='phase_done'){
-        setStatus(`✓ 完成：${evt.phase} / ${evt.side}`);
-      } else if(evt.type==='error'){
-        setStatus('❌ 错误：'+evt.message);
-        updateStartButton('▶️ 开始辩论');
-      } else if(evt.type==='done'){
-        setStatus('🎉 辩论完成');
-        updateStartButton('▶️ 开始辩论');
-      } else if(evt.type==='phase' && evt.phase==='init'){
-        setStatus('🚀 辩论开始');
+    function handleEvent(evt) {
+      if (!evt || typeof evt !== 'object') return;
+
+      switch (evt.type) {
+        case 'phase':
+          if (evt.phase === 'init') {
+            setStatus('Debate started');
+            // Clear empty state
+            if (historyItems.length === 0) {
+              document.getElementById('history').innerHTML = '';
+            }
+          }
+          break;
+
+        case 'phase_start':
+          addMessage(evt.side, evt.phase, evt.model || evt.provider, '(generating...)');
+          setStatus(`Generating: ${evt.title} (${evt.model || evt.provider})`);
+          break;
+
+        case 'delta':
+          updateLast(evt.side, evt.phase, (getExistingContent(evt.side, evt.phase) || '') + evt.content);
+          break;
+
+        case 'thinking':
+          appendThinking(evt.side, evt.phase, evt.content);
+          break;
+
+        case 'usage':
+          if (evt.usage) setUsage(evt.side, evt.phase, evt.usage);
+          break;
+
+        case 'phase_done':
+          if (evt.side !== 'judge') {
+            // Count completed debate turns (each side in each phase)
+            completedRounds = Math.min(4, Math.floor(historyItems.filter(m =>
+              m.side !== 'judge' && m.content && m.content !== '(generating...)').length / 2));
+            updateStats();
+          }
+          setStatus(`Done: ${evt.phase} / ${evt.side}`, 'success');
+          // Re-render to show thinking toggle if present
+          renderHistory();
+          break;
+
+        case 'error':
+          setStatus('Error: ' + evt.message, 'error');
+          break;
+
+        case 'done':
+          setStatus('Debate complete!', 'success');
+          break;
       }
     }
 
-    function updateStartButton(text){
-      document.getElementById('start-btn').textContent = text;
-    }
-
-    function getExistingContent(side, phase){
-      for(let i=historyItems.length-1;i>=0;i--){
-        const m=historyItems[i];
-        if(m.side===side && m.phase===phase) return m.content||'';
+    // =========================================================================
+    // History Loading
+    // =========================================================================
+    async function loadHistory() {
+      try {
+        const params = new URLSearchParams({ user_id: uid, session_id: sid });
+        const res = await fetch('/history?' + params.toString());
+        const data = await res.json();
+        historyItems = (data.history || []).map(h => ({
+          side: h.role, phase: h.phase, model: h.provider, content: h.content,
+          thinking: '', usage_text: '',
+        }));
+        renderHistory();
+        setStatus('History loaded', 'success');
+      } catch (e) {
+        setStatus('Failed to load history', 'error');
       }
-      return '';
     }
 
-    function setStatus(msg){ document.getElementById('status').textContent = msg; }
-
+    // =========================================================================
+    // Event Listeners
+    // =========================================================================
     document.getElementById('start-btn').addEventListener('click', startDebate);
     document.getElementById('load-history').addEventListener('click', loadHistory);
     document.getElementById('new-session').addEventListener('click', newSession);
+
+    // Keyboard shortcut: Ctrl+Enter to start debate
+    document.getElementById('topic').addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') startDebate();
+    });
   </script>
 </body>
 </html>
-

@@ -15,20 +15,17 @@ use tower_http::{cors::CorsLayer, timeout::TimeoutLayer};
 use tracing::info;
 
 use crate::app_metrics::{SimpleMetrics, Timer};
-use crate::debate::{execute_judge_round, execute_one_round, DebateStreamChunk};
+use crate::config;
+use crate::debate::{execute_judge_round_stream, execute_one_round, DebateStreamChunk};
 use crate::storage::{fetch_history, save_message};
 use crate::types::{
-    client_for_side, AppState, DebatePhase, DebateRequest, HistoryMessage, HistoryQuery, Position,
+    AppState, ClientInfo, DebatePhase, DebateRequest, HistoryMessage, HistoryQuery, Position,
 };
 
 /// Build the Axum router and shared state.
 pub async fn build_app(
     db: sqlx::SqlitePool,
-    clients: (
-        crate::types::ClientInfo,
-        crate::types::ClientInfo,
-        crate::types::ClientInfo,
-    ),
+    clients: (ClientInfo, ClientInfo, ClientInfo),
 ) -> Router {
     let (pro, con, judge) = clients;
     let state = Arc::new(AppState {
@@ -43,7 +40,7 @@ pub async fn build_app(
 
     Router::new()
         .route("/", get(index))
-        .route("/js/marked.min.js", get(serve_marked_js))
+        .route("/api/models", get(get_models))
         .route("/debate/stream", post(debate_stream))
         .route("/history", get(get_history).post(get_history_post))
         .route("/health", get(health))
@@ -61,7 +58,7 @@ pub async fn build_app(
 }
 
 pub async fn serve(listener: TcpListener, app: Router) -> anyhow::Result<()> {
-    info!("🚀 ai-debate running at http://127.0.0.1:3000");
+    info!("ai-debate v0.2.0 running at http://127.0.0.1:3000");
     axum::serve(listener, app).await?;
     Ok(())
 }
@@ -72,17 +69,31 @@ async fn index() -> Html<&'static str> {
     Html(include_str!("../static/index.html"))
 }
 
-async fn serve_marked_js() -> Response<String> {
-    Response::builder()
-        .header("Content-Type", "application/javascript")
-        .header("Cache-Control", "public, max-age=86400")
-        .body(include_str!("../static/js/marked.min.js").to_string())
-        .unwrap()
+/// Return available providers, models, and default selections.
+/// Used by the frontend to populate model selection dropdowns.
+async fn get_models(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    let providers = config::detect_available_providers();
+    let (default_pro, default_con, default_judge) = config::default_models();
+
+    Json(json!({
+        "providers": providers,
+        "defaults": {
+            "pro": state.pro.model_id,
+            "con": state.con.model_id,
+            "judge": state.judge.model_id,
+        },
+        "registered_defaults": {
+            "pro": default_pro,
+            "con": default_con,
+            "judge": default_judge,
+        }
+    }))
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     Json(json!({
         "status": "ok",
+        "version": "0.2.0",
         "uptime_secs": state.start_time.elapsed().as_secs(),
         "pro": state.pro.name,
         "pro_model": state.pro.model_id,
@@ -124,6 +135,26 @@ async fn debate_stream(
         return sse_error("invalid_topic", timer);
     }
 
+    // Resolve clients: use custom models if specified, otherwise use defaults.
+    let pro_client = match resolve_client(&state, &payload.pro_model, "pro").await {
+        Ok(c) => c,
+        Err(e) => {
+            return sse_error(&format!("Pro model init failed: {}", e), timer);
+        }
+    };
+    let con_client = match resolve_client(&state, &payload.con_model, "con").await {
+        Ok(c) => c,
+        Err(e) => {
+            return sse_error(&format!("Con model init failed: {}", e), timer);
+        }
+    };
+    let judge_client = match resolve_client(&state, &payload.judge_model, "judge").await {
+        Ok(c) => c,
+        Err(e) => {
+            return sse_error(&format!("Judge model init failed: {}", e), timer);
+        }
+    };
+
     let topic = payload.topic.clone();
     let user_id = payload.user_id.clone();
     let session_id = payload.session_id.clone();
@@ -131,11 +162,20 @@ async fn debate_stream(
     let mut timer = timer;
 
     let stream = async_stream::stream! {
-        yield sse_json(&json!({"type":"phase","phase":"init","message":"辩论开始"}));
+        yield sse_json(&json!({
+            "type": "phase",
+            "phase": "init",
+            "message": "Debate started",
+            "models": {
+                "pro": pro_client.model_id,
+                "con": con_client.model_id,
+                "judge": judge_client.model_id,
+            }
+        }));
 
         let mut transcript = Vec::new();
 
-        // Four rounds: pro then con each phase
+        // Four debate phases: pro then con each phase
         let debate_phases = [
             DebatePhase::Opening,
             DebatePhase::Rebuttal,
@@ -144,29 +184,56 @@ async fn debate_stream(
         ];
 
         for phase in debate_phases {
-            for side in [Position::Pro, Position::Con] {
-                let client_info = client_for_side(&state, side);
+            for (side, client) in [
+                (Position::Pro, &pro_client),
+                (Position::Con, &con_client),
+            ] {
+                yield sse_json(&json!({
+                    "type": "phase_start",
+                    "phase": phase.as_str(),
+                    "side": side.role_str(),
+                    "title": phase.title(),
+                    "provider": client.name,
+                    "model": client.model_id,
+                }));
 
-                // Send phase start event
-                yield sse_json(&json!({"type":"phase_start","phase":phase.as_str(),"side":side.role_str(),"title":phase.title(),"provider":client_info.name}));
-
-                // Execute the round
-                match execute_one_round(&state, side, phase, &topic, &transcript).await {
-                    Ok((mut stream, provider)) => {
+                match execute_one_round(client, side, phase, &topic, &transcript).await {
+                    Ok((mut stream, model_id)) => {
                         let mut full_content = String::new();
 
                         while let Some(chunk_res) = stream.next().await {
                             match chunk_res {
                                 Ok(DebateStreamChunk::Delta(delta)) => {
                                     if !delta.is_empty() {
-                                        yield sse_json(&json!({"type":"delta","side":side.role_str(),"phase":phase.as_str(),"provider":provider,"content":delta}));
+                                        yield sse_json(&json!({
+                                            "type": "delta",
+                                            "side": side.role_str(),
+                                            "phase": phase.as_str(),
+                                            "model": model_id,
+                                            "content": delta,
+                                        }));
                                         full_content.push_str(&delta);
                                     }
                                 }
                                 Ok(DebateStreamChunk::Thinking(thinking)) => {
                                     if !thinking.is_empty() {
-                                        yield sse_json(&json!({"type":"thinking","side":side.role_str(),"phase":phase.as_str(),"provider":provider,"content":thinking}));
+                                        yield sse_json(&json!({
+                                            "type": "thinking",
+                                            "side": side.role_str(),
+                                            "phase": phase.as_str(),
+                                            "model": model_id,
+                                            "content": thinking,
+                                        }));
                                     }
+                                }
+                                Ok(DebateStreamChunk::Usage(usage)) => {
+                                    yield sse_json(&json!({
+                                        "type": "usage",
+                                        "side": side.role_str(),
+                                        "phase": phase.as_str(),
+                                        "model": model_id,
+                                        "usage": usage,
+                                    }));
                                 }
                                 Err(e) => {
                                     if let Some(t) = timer.take() { t.stop(); }
@@ -176,39 +243,99 @@ async fn debate_stream(
                             }
                         }
 
-                        transcript.push((side, phase, full_content.clone(), provider.clone()));
-                        let _ = save_message(&state.db, &user_id, &session_id, side, phase, Some(&provider), &full_content).await;
-                        yield sse_json(&json!({"type":"phase_done","phase":phase.as_str(),"side":side.role_str(),"provider":provider}));
+                        transcript.push((side, phase, full_content.clone(), model_id.clone()));
+                        let _ = save_message(
+                            &state.db, &user_id, &session_id,
+                            side, phase, Some(&model_id), &full_content,
+                        ).await;
+                        yield sse_json(&json!({
+                            "type": "phase_done",
+                            "phase": phase.as_str(),
+                            "side": side.role_str(),
+                            "model": model_id,
+                        }));
                     }
                     Err(e) => {
                         if let Some(t) = timer.take() { t.stop(); }
-                        yield sse_json(&json!({"type":"error","message": format!("辩论轮次失败: {}", e)}));
+                        yield sse_json(&json!({"type":"error","message": format!("Round failed: {}", e)}));
                         return;
                     }
                 }
             }
         }
 
-        // Judge round
+        // Judge round - now with real streaming
         {
-            let judge_info = &state.judge;
-            yield sse_json(&json!({"type":"phase_start","phase":"judgement","side":"judge","title":DebatePhase::Judgement.title(),"provider":judge_info.name}));
+            yield sse_json(&json!({
+                "type": "phase_start",
+                "phase": "judgement",
+                "side": "judge",
+                "title": DebatePhase::Judgement.title(),
+                "provider": judge_client.name,
+                "model": judge_client.model_id,
+            }));
 
-            match execute_judge_round(&state, &topic, &transcript).await {
-                Ok((content, provider)) => {
-                    // Stream the judge content as deltas
-                    for chunk in content.chars().collect::<Vec<char>>().chunks(10) {
-                        let delta: String = chunk.iter().collect();
-                        yield sse_json(&json!({"type":"delta","side":"judge","phase":"judgement","provider":provider,"content":delta}));
+            match execute_judge_round_stream(&judge_client, &topic, &transcript).await {
+                Ok((mut stream, model_id)) => {
+                    let mut full_content = String::new();
+
+                    while let Some(chunk_res) = stream.next().await {
+                        match chunk_res {
+                            Ok(DebateStreamChunk::Delta(delta)) => {
+                                if !delta.is_empty() {
+                                    yield sse_json(&json!({
+                                        "type": "delta",
+                                        "side": "judge",
+                                        "phase": "judgement",
+                                        "model": model_id,
+                                        "content": delta,
+                                    }));
+                                    full_content.push_str(&delta);
+                                }
+                            }
+                            Ok(DebateStreamChunk::Thinking(thinking)) => {
+                                if !thinking.is_empty() {
+                                    yield sse_json(&json!({
+                                        "type": "thinking",
+                                        "side": "judge",
+                                        "phase": "judgement",
+                                        "model": model_id,
+                                        "content": thinking,
+                                    }));
+                                }
+                            }
+                            Ok(DebateStreamChunk::Usage(usage)) => {
+                                yield sse_json(&json!({
+                                    "type": "usage",
+                                    "side": "judge",
+                                    "phase": "judgement",
+                                    "model": model_id,
+                                    "usage": usage,
+                                }));
+                            }
+                            Err(e) => {
+                                if let Some(t) = timer.take() { t.stop(); }
+                                yield sse_json(&json!({"type":"error","message": format!("Judge stream error: {}", e)}));
+                                return;
+                            }
+                        }
                     }
 
-                    transcript.push((Position::Judge, DebatePhase::Judgement, content.clone(), provider.clone()));
-                    let _ = save_message(&state.db, &user_id, &session_id, Position::Judge, DebatePhase::Judgement, Some(&provider), &content).await;
-                    yield sse_json(&json!({"type":"phase_done","phase":"judgement","side":"judge","provider":provider}));
+                    transcript.push((Position::Judge, DebatePhase::Judgement, full_content.clone(), model_id.clone()));
+                    let _ = save_message(
+                        &state.db, &user_id, &session_id,
+                        Position::Judge, DebatePhase::Judgement, Some(&model_id), &full_content,
+                    ).await;
+                    yield sse_json(&json!({
+                        "type": "phase_done",
+                        "phase": "judgement",
+                        "side": "judge",
+                        "model": model_id,
+                    }));
                 }
                 Err(e) => {
                     if let Some(t) = timer.take() { t.stop(); }
-                    yield sse_json(&json!({"type":"error","message": format!("裁判阶段失败: {}", e)}));
+                    yield sse_json(&json!({"type":"error","message": format!("Judge failed: {}", e)}));
                     return;
                 }
             }
@@ -230,6 +357,28 @@ async fn debate_stream(
 }
 
 // --- Helpers ----------------------------------------------------------------
+
+/// Resolve a client for a given role. If a custom model is specified, build a new client.
+/// Otherwise, use the default client from app state.
+async fn resolve_client(
+    state: &Arc<AppState>,
+    custom_model: &Option<String>,
+    role: &str,
+) -> anyhow::Result<ClientInfo> {
+    if let Some(model_id) = custom_model {
+        let model_id = model_id.trim();
+        if !model_id.is_empty() {
+            return config::build_client_for_model(model_id).await;
+        }
+    }
+    // Use default client for this role
+    Ok(match role {
+        "pro" => state.pro.clone(),
+        "con" => state.con.clone(),
+        "judge" => state.judge.clone(),
+        _ => state.pro.clone(),
+    })
+}
 
 async fn is_rate_limited(state: &Arc<AppState>, user_id: &str) -> bool {
     let now = Instant::now();
