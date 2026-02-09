@@ -2,6 +2,8 @@
 
 **Multi-model AI debate arena built on [ai-lib-rust](https://github.com/hiddenpath/ai-lib-rust) and [ai-protocol](https://github.com/hiddenpath/ai-protocol).**
 
+[中文文档](README_CN.md)
+
 Three AI models engage in a structured debate: Pro and Con present arguments across four rounds, then a Judge delivers the verdict. Debaters can optionally search the web for evidence to support their arguments.
 
 ## Features
@@ -34,6 +36,110 @@ Three AI models engage in a structured debate: Pro and Con present arguments acr
 - **Real-time**: SSE client with streaming updates
 - **Search Display**: Visual search cards showing queries and sources
 
+## Quick Start
+
+### 1. Configure API Keys
+
+```bash
+cp .env.example .env
+# Edit .env and add your API keys (at least one provider required)
+# Optionally add TAVILY_API_KEY for web search tool calling
+```
+
+### 2. Build and Run
+
+```bash
+cargo run
+```
+
+### 3. Open in Browser
+
+Navigate to `http://127.0.0.1:3000`
+
+## API Key Configuration
+
+API keys are loaded from a `.env` file (via the `dotenv` crate). At startup, the system scans for all known provider keys and automatically makes the corresponding models available in the UI.
+
+| Environment Variable | Provider | Role | Notes |
+|---------------------|----------|------|-------|
+| `DEEPSEEK_API_KEY` | DeepSeek | Default Pro model | `sk-your-key` |
+| `ZHIPU_API_KEY` | Zhipu / GLM | Default Con model | `your-key` |
+| `GROQ_API_KEY` | Groq | Default Judge model | `gsk_your-key`, generous free tier |
+| `MISTRAL_API_KEY` | Mistral | Universal fallback | `your-key`, recommended |
+| `OPENAI_API_KEY` | OpenAI | Optional | `sk-your-key` |
+| `ANTHROPIC_API_KEY` | Anthropic | Optional | `sk-ant-your-key` |
+| `MINIMAX_API_KEY` | MiniMax | Optional | `your-key` |
+| `TAVILY_API_KEY` | Tavily | Web search (optional) | `tvly-your-key`, get at [tavily.com](https://tavily.com) |
+
+**How it works:**
+1. Copy `.env.example` to `.env` and fill in your keys
+2. At least **one** AI provider key is required; `MISTRAL_API_KEY` is recommended as a reliable fallback
+3. The system auto-detects which keys are present and exposes only those providers in the `/api/models` endpoint and UI dropdown
+4. If a primary model fails (e.g., auth error), the system automatically falls back to `mistral/mistral-small-latest`
+5. Users can override models for each role via the UI or via environment variables:
+   - `PRO_MODEL_ID` — e.g. `deepseek/deepseek-chat`
+   - `CON_MODEL_ID` — e.g. `zhipu/glm-4-plus`
+   - `JUDGE_MODEL_ID` — e.g. `groq/llama-3.3-70b-versatile`
+
+## Database
+
+The project uses **SQLite** for persisting debate history. No external database server is needed.
+
+- **Default path**: `debate.db` (created in the working directory)
+- **Override**: Set `DATABASE_URL` in `.env` (e.g., `DATABASE_URL=sqlite://path/to/debate.db`)
+- **Auto-creation**: The database file and table are created automatically on first run
+- **No migrations needed**: Uses `CREATE TABLE IF NOT EXISTS` on startup
+
+**Schema** (`debate_messages` table):
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER | Auto-increment primary key |
+| `user_id` | TEXT | User identifier |
+| `session_id` | TEXT | Debate session identifier |
+| `role` | TEXT | `pro`, `con`, or `judge` |
+| `phase` | TEXT | `opening`, `rebuttal`, `defense`, `closing`, or `judgement` |
+| `provider` | TEXT | Model ID used (e.g., `deepseek/deepseek-chat`) |
+| `content` | TEXT | Debate message content |
+| `created_at` | TIMESTAMP | Auto-generated timestamp |
+
+## Environment Configuration
+
+See [.env.example](.env.example) for all available options:
+
+```bash
+# Required: At least one AI provider API key
+DEEPSEEK_API_KEY=sk-your-key
+ZHIPU_API_KEY=your-key
+GROQ_API_KEY=gsk_your-key
+MISTRAL_API_KEY=your-key        # recommended as fallback
+
+# Optional: Additional providers
+OPENAI_API_KEY=sk-your-key
+ANTHROPIC_API_KEY=sk-ant-your-key
+MINIMAX_API_KEY=your-key
+
+# Optional: Web search for evidence-backed debates
+TAVILY_API_KEY=tvly-your-key
+
+# Optional: Override default models
+PRO_MODEL_ID=deepseek/deepseek-chat
+CON_MODEL_ID=zhipu/glm-4-plus
+JUDGE_MODEL_ID=groq/llama-3.3-70b-versatile
+
+# Optional: Database path (default: sqlite://debate.db)
+DATABASE_URL=sqlite://debate.db
+
+# Optional: Network proxy
+AI_PROXY_URL=http://127.0.0.1:7890
+
+# Optional: Local ai-protocol directory (auto-detected if not set)
+AI_PROTOCOL_DIR=../ai-protocol
+
+# Optional: Enable resilience features (circuit breaker, inflight limit)
+AI_DEBATE_RESILIENCE=true
+```
+
 ## Tool Calling (Web Search)
 
 When `TAVILY_API_KEY` is set, debaters (Pro and Con) can call a `web_search` tool to find evidence:
@@ -57,50 +163,6 @@ If `TAVILY_API_KEY` is not set, the system works exactly as before (no tool call
 | Judge | `groq/llama-3.3-70b-versatile` | `mistral/mistral-small-latest` |
 
 Users can override these selections in the UI before starting a debate.
-
-## Quick Start
-
-### 1. Configure API Keys
-
-```bash
-cp .env.example .env
-# Edit .env and add your API keys (at least one provider required)
-# Optionally add TAVILY_API_KEY for web search tool calling
-```
-
-### 2. Build and Run
-
-```bash
-cargo run
-```
-
-### 3. Open in Browser
-
-Navigate to `http://127.0.0.1:3000`
-
-## Environment Configuration
-
-See [.env.example](.env.example) for all available options. Key variables:
-
-```bash
-# Required: At least one AI provider API key
-DEEPSEEK_API_KEY=sk-your-key
-ZHIPU_API_KEY=your-key
-GROQ_API_KEY=gsk_your-key
-MISTRAL_API_KEY=your-key    # recommended as fallback
-
-# Optional: Additional providers
-OPENAI_API_KEY=sk-your-key
-ANTHROPIC_API_KEY=sk-ant-your-key
-
-# Optional: Web search for evidence-backed debates
-TAVILY_API_KEY=tvly-your-key
-
-# Optional: Override default models
-PRO_MODEL_ID=deepseek/deepseek-chat
-CON_MODEL_ID=zhipu/glm-4-plus
-JUDGE_MODEL_ID=groq/llama-3.3-70b-versatile
-```
 
 ## API Endpoints
 
@@ -137,6 +199,31 @@ JUDGE_MODEL_ID=groq/llama-3.3-70b-versatile
    - Closing Statement
    - *(If web search is enabled, models may search for evidence during any round)*
 4. **Judge delivers verdict** based on the complete debate transcript
+
+## Project Structure
+
+```
+aidebate/
+├── src/
+│   ├── main.rs              # Entry point, server initialization
+│   ├── config.rs            # Provider detection and AI client management
+│   ├── handlers.rs          # HTTP route handlers (Axum)
+│   ├── storage.rs           # SQLite database operations
+│   ├── types.rs             # Core data structures and enums
+│   ├── prompts.rs           # Prompt templates for debate roles
+│   ├── tools.rs             # Web search tool (Tavily API)
+│   ├── app_metrics.rs       # Metrics and timing infrastructure
+│   └── debate/
+│       ├── mod.rs           # Debate module exports
+│       └── engine.rs        # Debate execution engine with streaming
+├── static/
+│   ├── index.html           # Single-page web UI
+│   └── js/
+│       └── marked.min.js    # Markdown rendering library
+├── .env.example             # Environment variable template
+├── Cargo.toml               # Rust project manifest
+└── README.md
+```
 
 ## ai-lib-rust Features Used
 
