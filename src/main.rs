@@ -4,6 +4,7 @@ mod debate;
 mod handlers;
 mod prompts;
 mod storage;
+mod tools;
 mod types;
 
 use axum::Router;

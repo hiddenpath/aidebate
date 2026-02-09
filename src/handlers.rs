@@ -16,8 +16,11 @@ use tracing::info;
 
 use crate::app_metrics::{SimpleMetrics, Timer};
 use crate::config;
-use crate::debate::{execute_judge_round_stream, execute_one_round, DebateStreamChunk};
+use crate::debate::{
+    execute_judge_round_stream, execute_one_round, execute_round_with_tools, DebateStreamChunk,
+};
 use crate::storage::{fetch_history, save_message};
+use crate::tools;
 use crate::types::{
     AppState, ClientInfo, DebatePhase, DebateRequest, HistoryMessage, HistoryQuery, Position,
 };
@@ -86,6 +89,9 @@ async fn get_models(State(state): State<Arc<AppState>>) -> Json<serde_json::Valu
             "pro": default_pro,
             "con": default_con,
             "judge": default_judge,
+        },
+        "features": {
+            "web_search": tools::is_search_enabled(),
         }
     }))
 }
@@ -197,7 +203,15 @@ async fn debate_stream(
                     "model": client.model_id,
                 }));
 
-                match execute_one_round(client, side, phase, &topic, &transcript).await {
+                // Choose between tool-enabled and regular execution
+                let search_enabled = tools::is_search_enabled();
+                let round_result = if search_enabled {
+                    execute_round_with_tools(client, side, phase, &topic, &transcript).await
+                } else {
+                    execute_one_round(client, side, phase, &topic, &transcript).await
+                };
+
+                match round_result {
                     Ok((mut stream, model_id)) => {
                         let mut full_content = String::new();
 
@@ -233,6 +247,16 @@ async fn debate_stream(
                                         "phase": phase.as_str(),
                                         "model": model_id,
                                         "usage": usage,
+                                    }));
+                                }
+                                Ok(DebateStreamChunk::SearchPerformed(search_result)) => {
+                                    yield sse_json(&json!({
+                                        "type": "search",
+                                        "side": side.role_str(),
+                                        "phase": phase.as_str(),
+                                        "model": model_id,
+                                        "query": search_result.query,
+                                        "results": search_result.results,
                                     }));
                                 }
                                 Err(e) => {
@@ -312,6 +336,9 @@ async fn debate_stream(
                                     "model": model_id,
                                     "usage": usage,
                                 }));
+                            }
+                            Ok(DebateStreamChunk::SearchPerformed(_)) => {
+                                // Judge doesn't use tools - ignore
                             }
                             Err(e) => {
                                 if let Some(t) = timer.take() { t.stop(); }

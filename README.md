@@ -1,12 +1,13 @@
-# AI Debate v0.2.0
+# AI Debate v0.3.0
 
 **Multi-model AI debate arena built on [ai-lib-rust](https://github.com/hiddenpath/ai-lib-rust) and [ai-protocol](https://github.com/hiddenpath/ai-protocol).**
 
-Three AI models engage in a structured debate: Pro and Con present arguments across four rounds, then a Judge delivers the verdict.
+Three AI models engage in a structured debate: Pro and Con present arguments across four rounds, then a Judge delivers the verdict. Debaters can optionally search the web for evidence to support their arguments.
 
 ## Features
 
 - **4-Round Debate Flow**: Opening → Rebuttal → Defense → Closing → Judgement
+- **Web Search Tool Calling**: Debaters can search the web for evidence via Tavily API (optional)
 - **Dynamic Model Selection**: Choose any available model for each role via the UI
 - **Auto Provider Detection**: Automatically detects configured API keys and shows available models
 - **Multi-Provider Support**: DeepSeek, Zhipu GLM, Groq, Mistral, OpenAI, Anthropic, MiniMax
@@ -25,11 +26,27 @@ Three AI models engage in a structured debate: Pro and Con present arguments acr
 - **Protocol**: [ai-protocol](https://github.com/hiddenpath/ai-protocol)
 - **Database**: SQLx + SQLite
 - **Streaming**: Server-Sent Events (SSE)
+- **Tool Calling**: Function calling with web search via Tavily API
 
 ### Frontend
 - **Markdown**: [Marked.js](https://marked.js.org/) (CDN)
 - **Style**: Modern dark theme with responsive layout
 - **Real-time**: SSE client with streaming updates
+- **Search Display**: Visual search cards showing queries and sources
+
+## Tool Calling (Web Search)
+
+When `TAVILY_API_KEY` is set, debaters (Pro and Con) can call a `web_search` tool to find evidence:
+
+1. The model receives the debate context and a `web_search` tool definition
+2. If the model decides evidence would help, it calls `web_search` with a query
+3. The system executes the search via Tavily API and feeds results back
+4. The model generates its argument incorporating the search results
+5. Search activity is displayed in the UI with query and sources
+
+**Note**: The Judge does NOT use tools - it evaluates objectively based on the debate transcript only.
+
+If `TAVILY_API_KEY` is not set, the system works exactly as before (no tool calling, no behavior change).
 
 ## Default Model Configuration
 
@@ -48,6 +65,7 @@ Users can override these selections in the UI before starting a debate.
 ```bash
 cp .env.example .env
 # Edit .env and add your API keys (at least one provider required)
+# Optionally add TAVILY_API_KEY for web search tool calling
 ```
 
 ### 2. Build and Run
@@ -75,6 +93,9 @@ MISTRAL_API_KEY=your-key    # recommended as fallback
 OPENAI_API_KEY=sk-your-key
 ANTHROPIC_API_KEY=sk-ant-your-key
 
+# Optional: Web search for evidence-backed debates
+TAVILY_API_KEY=tvly-your-key
+
 # Optional: Override default models
 PRO_MODEL_ID=deepseek/deepseek-chat
 CON_MODEL_ID=zhipu/glm-4-plus
@@ -87,9 +108,23 @@ JUDGE_MODEL_ID=groq/llama-3.3-70b-versatile
 |--------|------|-------------|
 | GET | `/` | Main page |
 | GET | `/health` | Health check with model configuration |
-| GET | `/api/models` | Available providers and models (for UI) |
+| GET | `/api/models` | Available providers, models, and feature flags |
 | POST | `/debate/stream` | Start a debate, returns SSE stream |
 | GET | `/history` | Fetch debate history |
+
+## SSE Event Types
+
+| Type | Description |
+|------|-------------|
+| `phase` | Debate initialization with model info |
+| `phase_start` | A debate round begins |
+| `delta` | Streaming content chunk |
+| `thinking` | Model reasoning/thinking content |
+| `usage` | Token usage metadata |
+| `search` | Web search performed (query + results) |
+| `phase_done` | A debate round completed |
+| `error` | Error occurred |
+| `done` | Debate complete |
 
 ## Debate Flow
 
@@ -100,6 +135,7 @@ JUDGE_MODEL_ID=groq/llama-3.3-70b-versatile
    - Rebuttal
    - Defense
    - Closing Statement
+   - *(If web search is enabled, models may search for evidence during any round)*
 4. **Judge delivers verdict** based on the complete debate transcript
 
 ## ai-lib-rust Features Used
@@ -107,6 +143,7 @@ JUDGE_MODEL_ID=groq/llama-3.3-70b-versatile
 - **Unified Client Interface**: `AiClient::new("provider/model")`
 - **Automatic Fallback**: `AiClientBuilder::with_fallbacks()`
 - **Streaming**: `execute_stream()` returns `StreamingEvent` stream
+- **Tool Calling**: `tools(Vec<ToolDefinition>)` + `execute()` for function calling
 - **Token Usage**: `StreamingEvent::Metadata { usage }` for token tracking
 - **Error Classification**: Auth errors trigger automatic fallback
 - **Protocol-Driven**: All behavior defined by ai-protocol manifests

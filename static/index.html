@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Debate v0.2 — Multi-Model Arena</title>
+  <title>AI Debate v0.3 — Multi-Model Arena</title>
   <style>
     :root {
       --bg: #0a0e1a; --surface: #111827; --surface2: #1a2236;
@@ -120,11 +120,27 @@
 
     /* Usage tag */
     .usage-tag { font-size: 10px; color: var(--text3); background: var(--bg); padding: 2px 6px; border-radius: 4px; }
+
+    /* Search indicator */
+    .search-card { background: rgba(99,102,241,0.06); border: 1px dashed var(--accent); border-radius: var(--radius); padding: 10px 14px; margin: 0; }
+    .search-card .search-header { font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+    .search-card .search-query { font-size: 13px; color: var(--text); font-style: italic; margin-bottom: 4px; }
+    .search-card .search-results { font-size: 11px; color: var(--text3); max-height: 120px; overflow-y: auto; }
+    .search-card .search-results a { color: var(--accent2); text-decoration: none; }
+
+    /* Feature badge */
+    .feature-badge { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+    .feature-badge.active { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .feature-badge.inactive { background: rgba(100,116,139,0.15); color: var(--text3); }
+
+    /* Searching animation */
+    .searching-indicator { color: var(--accent); font-size: 12px; animation: pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
   </style>
 </head>
 <body>
   <header>
-    <h1>AI Debate Arena v0.2</h1>
+    <h1>AI Debate Arena v0.3</h1>
     <div class="header-controls">
       <button class="btn btn-secondary" id="new-session">New Session</button>
       <button class="btn btn-primary" id="start-btn">Start Debate</button>
@@ -169,6 +185,14 @@
             <div class="stat-label">Tokens</div>
             <div class="stat-value" id="stat-tokens">0</div>
           </div>
+          <div class="stat-item">
+            <div class="stat-label">Searches</div>
+            <div class="stat-value" id="stat-searches">0</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Web Search</div>
+            <div class="stat-value"><span class="feature-badge inactive" id="search-badge">OFF</span></div>
+          </div>
         </div>
       </div>
 
@@ -204,6 +228,7 @@
     let historyItems = [];
     let totalTokens = 0;
     let completedRounds = 0;
+    let totalSearches = 0;
     let modelsData = null;
 
     // =========================================================================
@@ -227,6 +252,7 @@
       historyItems = [];
       totalTokens = 0;
       completedRounds = 0;
+      totalSearches = 0;
       updateStats();
       renderHistory();
     }
@@ -259,6 +285,7 @@
     function updateStats() {
       document.getElementById('stat-rounds').textContent = completedRounds + '/4';
       document.getElementById('stat-tokens').textContent = totalTokens.toLocaleString();
+      document.getElementById('stat-searches').textContent = totalSearches;
     }
 
     // =========================================================================
@@ -273,6 +300,15 @@
         const d = modelsData.defaults;
         document.getElementById('providers-info').textContent =
           `Pro: ${d.pro} | Con: ${d.con} | Judge: ${d.judge}`;
+        // Update search badge
+        const badge = document.getElementById('search-badge');
+        if (modelsData.features && modelsData.features.web_search) {
+          badge.textContent = 'ON';
+          badge.className = 'feature-badge active';
+        } else {
+          badge.textContent = 'OFF';
+          badge.className = 'feature-badge inactive';
+        }
       } catch (e) {
         console.warn('Failed to fetch models:', e);
       }
@@ -448,6 +484,20 @@
       }
     }
 
+    function addSearchCard(side, phase, query, results) {
+      const box = document.getElementById('history');
+      const div = document.createElement('div');
+      div.className = 'search-card';
+      div.innerHTML = `
+        <div class="search-header">&#128269; Web Search</div>
+        <div class="search-query">"${query}"</div>
+        <div class="search-results">${results.replace(/\n/g, '<br>').replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank">$1</a>')}</div>
+      `;
+      box.appendChild(div);
+      const panel = document.getElementById('debate-panel');
+      panel.scrollTop = panel.scrollHeight;
+    }
+
     function getExistingContent(side, phase) {
       for (let i = historyItems.length - 1; i >= 0; i--) {
         if (historyItems[i].side === side && historyItems[i].phase === phase) return historyItems[i].content || '';
@@ -482,6 +532,7 @@
       historyItems = [];
       totalTokens = 0;
       completedRounds = 0;
+      totalSearches = 0;
       updateStats();
       renderHistory();
       document.getElementById('start-btn').textContent = 'Stop';
@@ -571,6 +622,13 @@
 
         case 'usage':
           if (evt.usage) setUsage(evt.side, evt.phase, evt.usage);
+          break;
+
+        case 'search':
+          totalSearches++;
+          updateStats();
+          addSearchCard(evt.side, evt.phase, evt.query, evt.results);
+          setStatus(`Searching: "${evt.query}"`, '');
           break;
 
         case 'phase_done':
