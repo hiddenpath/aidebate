@@ -156,6 +156,16 @@ If `TAVILY_API_KEY` is not set, the system works exactly as before (no tool call
 
 ## Default Model Configuration
 
+## Configuration (new)
+
+- **Per-round max token budgets**: configurable via environment variables:
+   - `PRO_MAX_TOKENS`: max tokens per Pro turn (default `2048`).
+   - `CON_MAX_TOKENS`: max tokens per Con turn (default `2048`).
+   - `JUDGE_MAX_TOKENS`: max tokens for Judge turn (default `3072`).
+- **History truncation**: to avoid overly long contexts, prompts are constructed by keeping the most relevant recent transcript entries and trimming older content based on the role's token budget.
+- **Reserved tokens**: reserve tokens for system messages and reply overhead (default `512`). Can be tuned via:
+   - `PRO_RESERVED_TOKENS`, `CON_RESERVED_TOKENS`, `JUDGE_RESERVED_TOKENS`, or `TRANSCRIPT_RESERVED_TOKENS`.
+
 | Role | Default Model | Fallback |
 |------|---------------|----------|
 | Pro | `deepseek/deepseek-chat` | `mistral/mistral-small-latest` |
