@@ -27,6 +27,45 @@ const JUDGE_DEFAULT_MODEL_ID: &str = "groq/llama-3.3-70b-versatile";
 const FALLBACK_MODEL_ID: &str = "mistral/mistral-small-latest";
 
 // ---------------------------------------------------------------------------
+// Runtime token / history configuration (can be overridden via env vars)
+// ---------------------------------------------------------------------------
+
+/// Get max tokens for a role from environment or defaults.
+/// Defaults: PRO=2048, CON=2048, JUDGE=3072
+pub fn max_tokens_for_role(role: &str) -> u32 {
+    let env_key = match role.to_lowercase().as_str() {
+        "pro" => "PRO_MAX_TOKENS",
+        "con" => "CON_MAX_TOKENS",
+        "judge" => "JUDGE_MAX_TOKENS",
+        _ => "DEFAULT_MAX_TOKENS",
+    };
+    std::env::var(env_key)
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or_else(|| match role.to_lowercase().as_str() {
+            "pro" => 2048,
+            "con" => 2048,
+            "judge" => 3072,
+            _ => 2048,
+        })
+}
+
+/// Get reserved tokens for system + reply overhead for a role.
+/// Defaults to 512 tokens; can be overridden per role via env vars.
+pub fn reserved_tokens_for_role(role: &str) -> u32 {
+    let env_key = match role.to_lowercase().as_str() {
+        "pro" => "PRO_RESERVED_TOKENS",
+        "con" => "CON_RESERVED_TOKENS",
+        "judge" => "JUDGE_RESERVED_TOKENS",
+        _ => "TRANSCRIPT_RESERVED_TOKENS",
+    };
+    std::env::var(env_key)
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(512)
+}
+
+// ---------------------------------------------------------------------------
 // Provider registry for auto-detection
 // ---------------------------------------------------------------------------
 

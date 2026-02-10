@@ -2,6 +2,7 @@ use ai_lib_rust::StreamingEvent;
 use futures::StreamExt;
 use tracing::info;
 
+use crate::config::max_tokens_for_role;
 use crate::prompts::{build_judge_prompt, build_side_prompt, build_side_prompt_with_tools};
 use crate::tools::{self, SearchResult};
 use crate::types::{ClientInfo, DebatePhase, Position};
@@ -34,7 +35,7 @@ pub async fn execute_one_round(
         .chat()
         .messages(messages)
         .temperature(0.7)
-        .max_tokens(2048)
+        .max_tokens(max_tokens_for_role(side.role_str()))
         .stream()
         .execute_stream()
         .await
@@ -70,7 +71,7 @@ pub async fn execute_round_with_tools(
         .messages(messages)
         .tools(tool_defs)
         .temperature(0.7)
-        .max_tokens(2048)
+        .max_tokens(max_tokens_for_role(side.role_str()))
         .execute()
         .await
         .map_err(|e| {
@@ -140,7 +141,7 @@ pub async fn execute_round_with_tools(
         .chat()
         .messages(messages_with_context)
         .temperature(0.7)
-        .max_tokens(2048)
+        .max_tokens(max_tokens_for_role(side.role_str()))
         .stream()
         .execute_stream()
         .await
@@ -186,7 +187,7 @@ pub async fn execute_judge_round_stream(
         .chat()
         .messages(messages)
         .temperature(0.3)
-        .max_tokens(1024)
+        .max_tokens(max_tokens_for_role("judge"))
         .stream()
         .execute_stream()
         .await

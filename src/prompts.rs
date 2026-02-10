@@ -1,6 +1,55 @@
 use ai_lib_rust::Message;
 
+use crate::config::{max_tokens_for_role, reserved_tokens_for_role};
 use crate::types::{DebatePhase, Position};
+
+/// Estimate tokens from text (~1 token per 4 characters).
+fn estimate_tokens_from_text(text: &str) -> u32 {
+    std::cmp::max(1, (text.len() as u32) / 4)
+}
+
+/// Compress transcript to fit token budget for a role.
+/// Keeps recent entries first, and if too large, truncates oldest entry content.
+fn compress_transcript_for_role(
+    transcript: &[(Position, DebatePhase, String, String)],
+    role: &str,
+) -> Vec<(Position, DebatePhase, String, String)> {
+    if transcript.is_empty() {
+        return vec![];
+    }
+
+    let reserved = reserved_tokens_for_role(role);
+    let max_tokens = max_tokens_for_role(role);
+    let allowed_history_tokens = max_tokens.saturating_sub(reserved);
+
+    // Build recent-first, sum tokens until budget exceeded
+    let mut out = Vec::new();
+    let mut total = 0u32;
+    for (pos, ph, content, provider) in transcript.iter().rev() {
+        let est = estimate_tokens_from_text(content);
+        if total + est > allowed_history_tokens && !out.is_empty() {
+            break;
+        }
+        out.push((pos.clone(), ph.clone(), content.clone(), provider.clone()));
+        total += est;
+    }
+
+    out.reverse();
+
+    // If still empty, truncate the oldest entry content
+    if out.is_empty() && !transcript.is_empty() {
+        let (pos, ph, content, provider) = &transcript[transcript.len() - 1];
+        let allowed_chars = std::cmp::max(80, (allowed_history_tokens as usize) * 4);
+        let truncated = if content.len() > allowed_chars {
+            format!("{}\n\n[...已截断]", &content[..allowed_chars])
+        } else {
+            content.clone()
+        };
+        return vec![(pos.clone(), ph.clone(), truncated, provider.clone())];
+    }
+
+    out
+}
 
 /// Build system prompt with optional tool calling instructions.
 pub fn build_side_prompt(
@@ -9,7 +58,12 @@ pub fn build_side_prompt(
     topic: &str,
     transcript: &[(Position, DebatePhase, String, String)],
 ) -> Vec<Message> {
-    build_side_prompt_inner(side, phase, topic, transcript, false, None)
+    let compressed = if !transcript.is_empty() {
+        compress_transcript_for_role(transcript, side.role_str())
+    } else {
+        vec![]
+    };
+    build_side_prompt_inner(side, phase, topic, &compressed, false, None)
 }
 
 /// Build system prompt with tool calling enabled and optional search context.
@@ -20,7 +74,12 @@ pub fn build_side_prompt_with_tools(
     transcript: &[(Position, DebatePhase, String, String)],
     search_context: Option<&str>,
 ) -> Vec<Message> {
-    build_side_prompt_inner(side, phase, topic, transcript, true, search_context)
+    let compressed = if !transcript.is_empty() {
+        compress_transcript_for_role(transcript, side.role_str())
+    } else {
+        vec![]
+    };
+    build_side_prompt_inner(side, phase, topic, &compressed, true, search_context)
 }
 
 fn build_side_prompt_inner(

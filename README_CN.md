@@ -152,6 +152,19 @@ AI_DEBATE_RESILIENCE=true
 
 **注意**：裁判不使用工具——它仅基于辩论记录进行客观评判。
 
+## 配置说明（新增）
+
+- **每轮最大 token 配额**：可以通过环境变量调整：
+   - `PRO_MAX_TOKENS`：正方单轮最大 tokens，默认 `2048`。
+   - `CON_MAX_TOKENS`：反方单轮最大 tokens，默认 `2048`。
+   - `JUDGE_MAX_TOKENS`：裁判单轮最大 tokens，默认 `3072`（建议增大以容纳完整裁决上下文）。
+- **历史上下文截断**：为避免上下文过长，系统会在构建 prompt 时根据 token 预算自动截断历史记录。保留的最近条数由 token 用量决定。
+- **保留 tokens**：为系统消息和回复内容保留 token 预算（默认 512）。可通过以下环境变量调整：
+   - `PRO_RESERVED_TOKENS`
+   - `CON_RESERVED_TOKENS`
+   - `JUDGE_RESERVED_TOKENS`
+   - `TRANSCRIPT_RESERVED_TOKENS`（通用默认值）
+
 如果未设置 `TAVILY_API_KEY`，系统将照常工作（无工具调用，无行为变化）。
 
 ## 默认模型配置
