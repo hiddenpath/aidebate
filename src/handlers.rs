@@ -43,6 +43,7 @@ pub async fn build_app(
 
     Router::new()
         .route("/", get(index))
+        .route("/favicon.svg", get(serve_favicon))
         .route("/api/models", get(get_models))
         .route("/debate/stream", post(debate_stream))
         .route("/history", get(get_history).post(get_history_post))
@@ -70,6 +71,14 @@ pub async fn serve(listener: TcpListener, app: Router) -> anyhow::Result<()> {
 
 async fn index() -> Html<&'static str> {
     Html(include_str!("../static/index.html"))
+}
+
+async fn serve_favicon() -> Response {
+    Response::builder()
+        .header("Content-Type", "image/svg+xml")
+        .header("Cache-Control", "public, max-age=86400")
+        .body(axum::body::Body::from(include_str!("../static/favicon.svg")))
+        .unwrap()
 }
 
 /// Return available providers, models, and default selections.
