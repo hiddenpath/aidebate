@@ -5,14 +5,14 @@ edition = "2021"
 authors = ["AI-Protocol Team"]
 license = "MIT OR Apache-2.0"
 description = "AI Debate System - Multi-provider AI debate with automatic fallback"
-repository = "https://github.com/hiddenpath/aidebate"
+repository = "https://github.com/ailib-official/aidebate"
 readme = "README.md"
 keywords = ["ai", "debate", "llm", "multi-provider"]
 categories = ["command-line-utilities", "web-programming"]
 
 [dependencies]
 # Use git dependency - ai-lib-rust with streaming, tool calling, token usage
-ai-lib-rust = { git = "https://github.com/hiddenpath/ai-lib-rust", tag = "v0.6.6" }
+ai-lib-rust = { git = "https://github.com/ailib-official/ai-lib-rust", tag = "v0.6.6" }
 anyhow = "1.0.100"
 async-stream = "0.3"
 async-trait = "0.1"

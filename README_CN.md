@@ -1,6 +1,6 @@
 # AI Debate v0.3.0
 
-**基于 [ai-lib-rust](https://github.com/hiddenpath/ai-lib-rust) 和 [ai-protocol](https://github.com/hiddenpath/ai-protocol) 构建的多模型 AI 辩论竞技场。**
+**基于 [ai-lib-rust](https://github.com/ailib-official/ai-lib-rust) 和 [ai-protocol](https://github.com/ailib-official/ai-protocol) 构建的多模型 AI 辩论竞技场。**
 
 [English](README.md)
 
@@ -24,8 +24,8 @@
 
 ### 后端
 - **框架**：Axum（异步 Web 框架）
-- **AI 集成**：[ai-lib-rust](https://github.com/hiddenpath/ai-lib-rust) v0.6.6
-- **协议**：[ai-protocol](https://github.com/hiddenpath/ai-protocol)
+- **AI 集成**：[ai-lib-rust](https://github.com/ailib-official/ai-lib-rust) v0.6.6
+- **协议**：[ai-protocol](https://github.com/ailib-official/ai-protocol)
 - **数据库**：SQLx + SQLite
 - **流式传输**：Server-Sent Events (SSE)
 - **工具调用**：通过 Tavily API 实现函数调用与网络搜索
@@ -250,10 +250,10 @@ aidebate/
 
 ## 相关项目
 
-- [ai-lib-rust](https://github.com/hiddenpath/ai-lib-rust) - AI-Protocol 的 Rust 运行时
-- [ai-lib-python](https://github.com/hiddenpath/ai-lib-python) - AI-Protocol 的 Python 运行时
-- [ai-protocol](https://github.com/hiddenpath/ai-protocol) - 与供应商无关的 AI 规范
-- [aidebate-python](https://github.com/hiddenpath/aidebate-python) - 本项目的 Python 版本
+- [ai-lib-rust](https://github.com/ailib-official/ai-lib-rust) - AI-Protocol 的 Rust 运行时
+- [ai-lib-python](https://github.com/ailib-official/ai-lib-python) - AI-Protocol 的 Python 运行时
+- [ai-protocol](https://github.com/ailib-official/ai-protocol) - 与供应商无关的 AI 规范
+- [aidebate-python](https://github.com/ailib-official/aidebate-python) - 本项目的 Python 版本
 
 ## 许可证
 

@@ -1,6 +1,6 @@
 # AI Debate v0.3.0
 
-**Multi-model AI debate arena built on [ai-lib-rust](https://github.com/hiddenpath/ai-lib-rust) and [ai-protocol](https://github.com/hiddenpath/ai-protocol).**
+**Multi-model AI debate arena built on [ai-lib-rust](https://github.com/ailib-official/ai-lib-rust) and [ai-protocol](https://github.com/ailib-official/ai-protocol).**
 
 [中文文档](README_CN.md)
 
@@ -24,8 +24,8 @@ Three AI models engage in a structured debate: Pro and Con present arguments acr
 
 ### Backend
 - **Framework**: Axum (async web framework)
-- **AI Integration**: [ai-lib-rust](https://github.com/hiddenpath/ai-lib-rust) v0.6.6
-- **Protocol**: [ai-protocol](https://github.com/hiddenpath/ai-protocol)
+- **AI Integration**: [ai-lib-rust](https://github.com/ailib-official/ai-lib-rust) v0.6.6
+- **Protocol**: [ai-protocol](https://github.com/ailib-official/ai-protocol)
 - **Database**: SQLx + SQLite
 - **Streaming**: Server-Sent Events (SSE)
 - **Tool Calling**: Function calling with web search via Tavily API
@@ -247,10 +247,10 @@ aidebate/
 
 ## Related Projects
 
-- [ai-lib-rust](https://github.com/hiddenpath/ai-lib-rust) - Protocol Runtime for AI-Protocol
-- [ai-lib-python](https://github.com/hiddenpath/ai-lib-python) - Python Runtime for AI-Protocol
-- [ai-protocol](https://github.com/hiddenpath/ai-protocol) - Provider-agnostic AI specification
-- [aidebate-python](https://github.com/hiddenpath/aidebate-python) - Python port of this project
+- [ai-lib-rust](https://github.com/ailib-official/ai-lib-rust) - Protocol Runtime for AI-Protocol
+- [ai-lib-python](https://github.com/ailib-official/ai-lib-python) - Python Runtime for AI-Protocol
+- [ai-protocol](https://github.com/ailib-official/ai-protocol) - Provider-agnostic AI specification
+- [aidebate-python](https://github.com/ailib-official/aidebate-python) - Python port of this project
 
 ## License
 
